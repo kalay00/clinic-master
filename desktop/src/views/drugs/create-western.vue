@@ -129,7 +129,7 @@
       <div class="form-grid four-col">
         <el-form-item label="用法" prop="usage_id">
           <div class="select-plus">
-            <el-select v-model="form.usage_id" placeholder="请选择" filterable allow-create clearable style="flex:1">
+            <el-select v-model="form.usage_id" placeholder="请选择" filterable clearable style="flex:1">
               <el-option v-for="u in usages" :key="u.id" :label="u.name" :value="u.id" />
             </el-select>
             <el-button :icon="Plus" circle class="plus-btn" @click="goDict('usage')" />
@@ -145,7 +145,7 @@
         </el-form-item>
         <el-form-item label="频度">
           <div class="select-plus">
-            <el-select v-model="form.frequency_id" placeholder="请选择" filterable allow-create clearable style="flex:1">
+            <el-select v-model="form.frequency_id" placeholder="请选择" filterable clearable style="flex:1">
               <el-option v-for="f in frequencies" :key="f.id" :label="f.name" :value="f.id" />
             </el-select>
             <el-button :icon="Plus" circle class="plus-btn" @click="goDict('frequency')" />
@@ -200,6 +200,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { DocumentChecked, Back, Plus } from '@element-plus/icons-vue'
 import { createDrug, updateDrug, getDrugCategories, getDrug } from '@/api/pharmacy'
+import { getDictionaryList } from '@/api/dictionary'
 import { fetchAllPages } from '@/utils/paging'
 import { useDrugCategoryConfig } from '@/composables/useDrugCategoryConfig'
 
@@ -226,23 +227,30 @@ const feeItems = ref([
   { id: '4', name: '检查费' },
   { id: '5', name: '治疗费' }
 ])
-const usages = ref([
-  { id: '1', name: '口服' },
-  { id: '2', name: '外用' },
-  { id: '3', name: '注射' },
-  { id: '4', name: '含服' },
-  { id: '5', name: '滴眼' },
-  { id: '6', name: '煎服' }
-])
-const frequencies = ref([
-  { id: '1', name: '一天1次' },
-  { id: '2', name: '一天2次' },
-  { id: '3', name: '一天3次' },
-  { id: '4', name: '睡前' },
-  { id: '5', name: '必要时' },
-  { id: '6', name: '饭前' },
-  { id: '7', name: '饭后' }
-])
+// 药品用法/频度与字典维护（药品信息-药品用法/药品频度）对齐，数据源为字典表，不硬编码
+const usages = ref([])
+const frequencies = ref([])
+
+async function loadDrugDictionaryOptions(subType) {
+  try {
+    const res = await getDictionaryList({ category: 'drug', sub_type: subType, page: 1, page_size: 100 })
+    return (res.items || [])
+      .filter(d => d.status !== 'inactive')
+      .map(d => ({ id: String(d.id), name: d.content }))
+  } catch (e) {
+    ElMessage.warning('加载药品字典失败')
+    return []
+  }
+}
+
+async function loadUsagesAndFrequencies() {
+  const [usageList, frequencyList] = await Promise.all([
+    loadDrugDictionaryOptions('drug_usage'),
+    loadDrugDictionaryOptions('drug_frequency')
+  ])
+  usages.value = usageList
+  frequencies.value = frequencyList
+}
 
 const form = reactive({
   drug_code: '',
@@ -372,6 +380,7 @@ onMounted(async () => {
     activeTab.value = 'western'
   }
   await loadCategories()
+  await loadUsagesAndFrequencies()
   await loadDetail()
 })
 </script>

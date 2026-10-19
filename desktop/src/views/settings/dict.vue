@@ -158,6 +158,7 @@ const menuData = [
   { key: 'drug', label: '药品信息', children: [
     { key: 'drug_category', label: '药品分类', shortLabel: '药品分类', kind: 'drug_category' },
     { key: 'drug_usage', label: '药品用法', shortLabel: '药品用法' },
+    { key: 'drug_frequency', label: '药品频度', shortLabel: '药品频度' },
     { key: 'drug_form', label: '药品剂型', shortLabel: '药品剂型' },
     { key: 'fee_item', label: '发票项目', shortLabel: '发票项目' },
     { key: 'manufacturer', label: '生产厂家', shortLabel: '生产厂家' },
