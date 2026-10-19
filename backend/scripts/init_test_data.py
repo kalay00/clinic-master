@@ -30,7 +30,7 @@ from app.api.v1.module_department.model import Department
 from app.api.v1.module_doctor.model import Doctor
 from app.api.v1.module_treatment.model import MedicalRecord, Prescription
 from app.api.v1.module_payment.model import Bill, Payment
-from app.api.v1.module_pharmacy.model import Drug, Inventory, Dispense
+from app.api.v1.module_pharmacy.model import Drug, DrugCategory, Inventory, Dispense
 from app.api.v1.module_member.model import MemberLevel
 from app.core.logger import logger
 
@@ -775,6 +775,7 @@ def init_test_data():
             logger.warning(f"跳过科室/医生数据创建: {str(e)}")
 
         # 5. 创建药品数据（如果表存在）
+        drug_categories_by_tenant = {}
         try:
             from sqlalchemy import inspect
             inspector = inspect(engine)
@@ -783,7 +784,47 @@ def init_test_data():
                 drugs_by_tenant = {}
             else:
                 logger.info("创建药品数据...")
-                
+
+                # 5.1 创建药品分类（字典维护-药品分类页数据源：/pharmacy/drug-categories，按租户隔离，幂等）
+                drug_categories_by_tenant = {}
+                try:
+                    if 'drug_categories' in inspector.get_table_names():
+                        logger.info("创建药品分类...")
+                        drug_categories_data = [
+                            {"name": "西药", "category_type": "western", "sort": 1, "remark": "抗生素、解热镇痛等化学药品"},
+                            {"name": "中成药", "category_type": "chinese_patent", "sort": 2, "remark": "中药成方制剂"},
+                            {"name": "中药", "category_type": "herb", "sort": 3, "remark": "中药材/草药"},
+                        ]
+                        for tenant in [tenant1, tenant2]:
+                            _users = users_by_tenant.get(tenant.id) or []
+                            admin_id = _users[0].id if _users else None
+                            drug_categories_by_tenant[tenant.id] = {}
+                            for cat_data in drug_categories_data:
+                                existing_cat = db.query(DrugCategory).filter(
+                                    DrugCategory.tenant_id == tenant.id,
+                                    DrugCategory.name == cat_data["name"],
+                                    DrugCategory.deleted_at.is_(None),
+                                ).first()
+                                if existing_cat:
+                                    drug_categories_by_tenant[tenant.id][cat_data["name"]] = existing_cat.id
+                                    continue
+                                cat = DrugCategory(
+                                    tenant_id=tenant.id,
+                                    name=cat_data["name"],
+                                    category_type=cat_data["category_type"],
+                                    sort=cat_data["sort"],
+                                    remark=cat_data["remark"],
+                                    status="active",
+                                    created_by=admin_id,
+                                )
+                                db.add(cat)
+                                db.flush()
+                                drug_categories_by_tenant[tenant.id][cat_data["name"]] = cat.id
+                            logger.info(f"✓ 药品分类创建完成 (租户: {tenant.code})")
+                except Exception as e:
+                    logger.warning(f"跳过药品分类创建: {str(e)}")
+                    drug_categories_by_tenant = {}
+
                 # 注意：这里需要医生和科室，但我们先创建占位符
                 # 实际系统中应该有医生和科室表，这里先跳过外键约束
                 
@@ -804,7 +845,10 @@ def init_test_data():
                 drugs_by_tenant = {}
                 for tenant in [tenant1, tenant2]:
                     drugs_by_tenant[tenant.id] = []
+                    category_ids = drug_categories_by_tenant.get(tenant.id, {})
                     for drug_data in drugs_data:
+                        # 关联药品分类（保留旧分类名字段兼容前端回退）
+                        category_id = category_ids.get(drug_data["category"])
                         # 检查药品是否已存在（按租户+药品编码），避免重复启动重复插入
                         existing_drug = db.query(Drug).filter(
                             Drug.tenant_id == tenant.id,
@@ -813,6 +857,10 @@ def init_test_data():
                         ).first()
                         if existing_drug:
                             logger.info(f"✓ 药品已存在: {drug_data['name']} (租户: {tenant.code})")
+                            # 幂等：为历史数据（只有旧分类名）补充分类关联
+                            if existing_drug.category_id is None and category_id is not None:
+                                existing_drug.category_id = category_id
+                                db.flush()
                             drugs_by_tenant[tenant.id].append(existing_drug)
                             continue
                         drug = Drug(
@@ -823,6 +871,7 @@ def init_test_data():
                             specification=drug_data["specification"],
                             unit=drug_data["unit"],
                             category=drug_data["category"],
+                            category_id=category_id,
                             manufacturer=drug_data["manufacturer"],
                             price=drug_data["price"],
                             status="active",
@@ -951,6 +1000,8 @@ def init_test_data():
         drugs_count = len(drugs_by_tenant.get(tenant1.id, [])) if drugs_by_tenant else 0
         print(f"\n每个租户的患者数量: {patients_count}")
         print(f"每个租户的药品数量: {drugs_count}")
+        drug_categories_count = len(drug_categories_by_tenant.get(tenant1.id, {})) if drug_categories_by_tenant else 0
+        print(f"每个租户的药品分类数量: {drug_categories_count} (西药/中成药/中药，可在字典维护-药品分类中查看)")
         print("="*60)
         
     except Exception as e:
