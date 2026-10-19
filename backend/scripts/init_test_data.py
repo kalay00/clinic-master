@@ -130,7 +130,7 @@ def init_test_data():
             "treatment": "诊疗",
             "payment": "收费",
             "pharmacy": "药品",
-    "drug": "药品分类",
+            "drug": "药品分类",
             "report": "报表",
             "role": "角色",
             "department": "科室",
