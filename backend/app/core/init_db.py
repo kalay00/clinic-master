@@ -24,19 +24,25 @@ def init_data() -> None:
     初始化基础数据
     创建系统默认数据
     """
-    # 测试数据生成逻辑已移至 backend/scripts/init_test_data.py（scripts 不是包，需加入 sys.path）
+    # 测试数据生成逻辑已移至 backend/scripts/init_test_data.py（scripts 不是包，需动态加载）
     import sys
     from pathlib import Path
 
-    scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
-    if scripts_dir not in sys.path:
-        sys.path.insert(0, scripts_dir)
+    # __file__ = backend/app/core/init_db.py，parents[2] 即 backend 根目录
+    scripts_dir = str(Path(__file__).resolve().parents[2] / "scripts")
+    try:
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
 
-    from init_test_data import init_test_data
+        from init_test_data import init_test_data
 
-    print("初始化基础数据...")
-    init_test_data()
-    print("基础数据初始化完成！")
+        print("初始化基础数据...")
+        init_test_data()
+        print("基础数据初始化完成！")
+    except Exception:
+        # 基础数据为可选种子数据，加载/执行失败不应阻塞服务启动
+        from app.core.logger import logger
+        logger.exception("基础数据初始化失败（已跳过，可手动执行 python scripts/init_test_data.py）")
 
 
 if __name__ == "__main__":
