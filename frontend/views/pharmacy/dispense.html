@@ -1,0 +1,702 @@
+<!-- 发药管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('pharmacy')">药房管理</a></li>
+            <li class="breadcrumb-item active">发药</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-capsule"></i> 发药</h1>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 处方列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">处方列表（待发药/已发药）</h5>
+    </div>
+    <div class="card-body">
+        <div id="prescriptions-table-container"></div>
+        <div id="prescriptions-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'prescription-search',
+        placeholder: '请输入处方号、患者姓名搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            if (window.loadDispensePrescriptions) {
+                window.loadDispensePrescriptions();
+            }
+        }
+    });
+}
+
+// 加载处方列表（挂载到全局作用域）
+window.loadDispensePrescriptions = async function() {
+    const container = document.getElementById('prescriptions-table-container');
+    if (!container) {
+        console.warn('prescriptions-table-container元素未找到，跳过加载');
+        return;
+    }
+    const loadingId = LoadingComponents.show('加载中...', container);
+    try {
+        // 获取所有处方（不筛选状态），然后在前端筛选和排序
+        const params = {
+            page: 1, // 获取第一页，获取更多数据
+            page_size: 1000 // 获取足够多的数据以便前端筛选和排序
+        };
+        if (searchKeyword) {
+            params.keyword = searchKeyword;
+        }
+        const response = await TreatmentAPI.getPrescriptions(params);
+
+        let items = response.items || response.data?.items || response || [];
+        let pagination = response.pagination || response.data?.pagination || {};
+
+        // 筛选出待发药和已发药的处方
+        items = items.filter(item => {
+            const status = item.status || item.prescription_status || 'pending';
+            return status === 'pending' || status === 'dispensed';
+        });
+
+        // 排序：待发药排在前面
+        items.sort((a, b) => {
+            const statusA = a.status || a.prescription_status || 'pending';
+            const statusB = b.status || b.prescription_status || 'pending';
+            
+            // 待发药（pending）排在前面
+            if (statusA === 'pending' && statusB !== 'pending') return -1;
+            if (statusA !== 'pending' && statusB === 'pending') return 1;
+            
+            // 如果状态相同，按创建时间倒序
+            const dateA = new Date(a.created_at || 0);
+            const dateB = new Date(b.created_at || 0);
+            return dateB - dateA;
+        });
+
+        // 前端分页
+        const totalItems = items.length;
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const paginatedItems = items.slice(startIndex, endIndex);
+
+        const mockData = {
+            items: paginatedItems,
+            total: totalItems,
+            page: currentPage,
+            page_size: pageSize,
+            total_pages: Math.ceil(totalItems / pageSize)
+        };
+
+        container.innerHTML = TableComponents.renderTable({
+            id: 'prescriptions-table',
+            columns: [
+                {
+                    title: '序号',
+                    key: 'index',
+                    align: 'center',
+                    width: '80px',
+                    render: (row, index) => (mockData.page - 1) * mockData.page_size + index + 1
+                },
+                {
+                    title: '处方号',
+                    key: 'prescription_no',
+                    align: 'center',
+                    render: (row) => row.prescription_no || row.prescription_number || row.id || '-'
+                },
+                {
+                    title: '患者姓名',
+                    key: 'patient_name',
+                    align: 'center',
+                    render: (row) => row.patient_name || '-'
+                },
+                {
+                    title: '医生姓名',
+                    key: 'doctor_name',
+                    align: 'center',
+                    render: (row) => row.doctor_name || '-'
+                },
+                {
+                    title: '处方类型',
+                    key: 'prescription_type',
+                    align: 'center',
+                    render: (row) => {
+                        const typeMap = {
+                            'western': '西医',
+                            'tcm': '中药',
+                            'combined': '中西药联合'
+                        };
+                        return typeMap[row.prescription_type] || row.prescription_type || '-';
+                    }
+                },
+                {
+                    title: '药品数量',
+                    key: 'drug_count',
+                    align: 'center',
+                    render: (row) => {
+                        if (row.drug_count !== undefined) {
+                            return row.drug_count;
+                        }
+                        if (row.items) {
+                            if (Array.isArray(row.items)) {
+                                return row.items.length;
+                            } else if (typeof row.items === 'object') {
+                                return Object.keys(row.items).length;
+                            }
+                        }
+                        return '-';
+                    }
+                },
+                {
+                    title: '总金额',
+                    key: 'total_amount',
+                    align: 'center',
+                    render: (row) => {
+                        const amount = row.total_amount || 0;
+                        return `¥${Number(amount).toFixed(2)}`;
+                    }
+                },
+                {
+                    title: '状态',
+                    key: 'status',
+                    align: 'center',
+                    render: (row) => {
+                        const statusMap = {
+                            'pending': { text: '待发药', class: 'warning' },
+                            'dispensed': { text: '已发药', class: 'success' },
+                            'cancelled': { text: '已取消', class: 'danger' }
+                        };
+                        const statusValue = row.status || row.prescription_status || 'pending';
+                        const status = statusMap[statusValue] || { text: statusValue, class: 'secondary' };
+                        return `<span class="badge bg-${status.class}">${status.text}</span>`;
+                    }
+                },
+                {
+                    title: '创建时间',
+                    key: 'created_at',
+                    align: 'center',
+                    render: (row) => {
+                        if (!row.created_at) return '-';
+                        try {
+                            const date = new Date(row.created_at);
+                            if (isNaN(date.getTime())) return row.created_at;
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            const seconds = String(date.getSeconds()).padStart(2, '0');
+                            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                        } catch (e) {
+                            return row.created_at;
+                        }
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => {
+                        const statusValue = row.status || row.prescription_status || 'pending';
+                        let html = `<button class="btn btn-sm btn-outline-primary" onclick="if(window.viewPrescription) window.viewPrescription('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>`;
+                        
+                        // 只有待发药状态才显示发药按钮
+                        if (statusValue === 'pending') {
+                            // 检查发药权限
+                            if (window.hasPermission && window.hasPermission('pharmacy:dispense')) {
+                                html += `<button class="btn btn-sm btn-outline-success ms-1" onclick="if(window.dispensePrescription) window.dispensePrescription('${row.id}')">
+                                    <i class="bi bi-capsule"></i> 发药
+                                </button>`;
+                            }
+                        }
+                        return html;
+                    }
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无处方数据'
+        });
+
+        // 渲染分页
+        const paginationContainer = document.getElementById('prescriptions-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = PaginationComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    window.loadDispensePrescriptions();
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+    } catch (error) {
+        console.error('加载处方列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载处方列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 查看处方（挂载到全局作用域）
+window.viewPrescription = async function(id) {
+    try {
+        const response = await TreatmentAPI.getPrescriptionDetail(id);
+        const prescription = response.data || response;
+        
+        if (!prescription) {
+            utils.showToast('获取处方详情失败', 'danger');
+            return;
+        }
+        
+        // 统计药品信息（items 可能是数组，也可能是以药品ID为key的对象，需统一为数组）
+        const rawItems = prescription.items || [];
+        const items = Array.isArray(rawItems)
+            ? rawItems
+            : (rawItems && typeof rawItems === 'object'
+                ? Object.entries(rawItems).map(([drugId, it]) => ({ drug_id: drugId, ...(it || {}) }))
+                : []);
+        const totalQuantity = items.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
+        
+        // 药品分类中文映射
+        const categoryNameMap = {
+            'western': '西药',
+            'tcm': '中药',
+            'antibiotic': '抗生素',
+            'antiviral': '抗病毒药',
+            'antifungal': '抗真菌药',
+            'antipyretic': '解热镇痛药',
+            'antihistamine': '抗组胺药',
+            'cough': '止咳药',
+            'digestive': '消化系统药',
+            'cardiovascular': '心血管药',
+            'respiratory': '呼吸系统药',
+            'nervous': '神经系统药',
+            'endocrine': '内分泌药',
+            'vitamin': '维生素',
+            'supplement': '保健品',
+            'other': '其他'
+        };
+        
+        // 按药品实际分类统计
+        const categoryCount = {};
+        items.forEach(item => {
+            const category = item.category || 'other';
+            categoryCount[category] = (categoryCount[category] || 0) + 1;
+        });
+        
+        // 构建分类统计HTML（显示中文名称）
+        const categoryCountHtml = Object.entries(categoryCount).map(([category, count]) => {
+            const categoryName = categoryNameMap[category.toLowerCase()] || category;
+            return `<span class="badge bg-secondary me-1">${categoryName}：${count}种</span>`;
+        }).join('');
+        
+        // 构建查看内容HTML
+        const prescriptionTypeMap = {
+            'western': '西医',
+            'tcm': '中药',
+            'combined': '中西药联合'
+        };
+        
+        const itemsHtml = items.map((item, index) => `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${item.drug_name || '-'}</td>
+                <td>${item.specification || '-'}</td>
+                <td>${item.quantity || 0} ${item.unit || ''}</td>
+                <td>${item.dosage || item.usage || '-'}</td>
+                <td>${item.batch_no || '-'}</td>
+                <td>${item.manufacturer || '-'}</td>
+                <td>¥${Number(item.price || 0).toFixed(2)}</td>
+                <td>¥${Number(item.amount || 0).toFixed(2)}</td>
+            </tr>
+        `).join('');
+        
+        // categoryCountHtml 已在上面定义
+        
+        const modalContent = `
+            <div class="prescription-detail-view" id="prescription-detail-view-${id}">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h5 class="border-bottom pb-2">处方信息</h5>
+                        <table class="table table-bordered">
+                            <tr>
+                                <th width="30%">处方号：</th>
+                                <td>${prescription.prescription_no || '-'}</td>
+                            </tr>
+                            <tr>
+                                <th>患者姓名：</th>
+                                <td>${prescription.patient_name || '-'}</td>
+                            </tr>
+                            <tr>
+                                <th>医生姓名：</th>
+                                <td>${prescription.doctor_name || '-'}</td>
+                            </tr>
+                            <tr>
+                                <th>处方类型：</th>
+                                <td>${prescriptionTypeMap[prescription.prescription_type] || prescription.prescription_type || '-'}</td>
+                            </tr>
+                            <tr>
+                                <th>状态：</th>
+                                <td>
+                                    <span class="badge bg-${prescription.status === 'pending' ? 'warning' : prescription.status === 'dispensed' ? 'success' : 'secondary'}">
+                                        ${prescription.status === 'pending' ? '待发药' : prescription.status === 'dispensed' ? '已发药' : prescription.status || '未知'}
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="border-bottom pb-2">统计信息</h5>
+                        <table class="table table-bordered">
+                            <tr>
+                                <th width="30%">药品总数：</th>
+                                <td>${items.length} 种</td>
+                            </tr>
+                            <tr>
+                                <th>总数量：</th>
+                                <td>${totalQuantity} ${items[0]?.unit || ''}</td>
+                            </tr>
+                            <tr>
+                                <th>分类统计：</th>
+                                <td>${categoryCountHtml || '-'}</td>
+                            </tr>
+                            <tr>
+                                <th>总金额：</th>
+                                <td class="fw-bold text-danger">¥${Number(prescription.total_amount || 0).toFixed(2)}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <h5 class="border-bottom pb-2">药品明细</h5>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>序号</th>
+                                        <th>药品名称</th>
+                                        <th>规格</th>
+                                        <th>数量</th>
+                                        <th>用法用量</th>
+                                        <th>批次号</th>
+                                        <th>生产厂家</th>
+                                        <th>单价</th>
+                                        <th>金额</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${itemsHtml || '<tr><td colspan="9" class="text-center">暂无药品明细</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                ${prescription.remark ? `
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h5 class="border-bottom pb-2">备注</h5>
+                        <p class="mb-0">${prescription.remark}</p>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+        
+        // 显示模态框（使用自定义模态框）
+        const modalId = `prescription-detail-modal-${Date.now()}`;
+        const modalHtml = `
+            <div class="modal fade" id="${modalId}" tabindex="-1">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">处方详情</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                            ${modalContent}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-primary" onclick="window.printPrescriptionFromModal('${id}')">
+                                <i class="bi bi-printer"></i> 打印
+                            </button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 添加到页面
+        const modalContainer = document.getElementById('modal-container') || (() => {
+            const container = document.createElement('div');
+            container.id = 'modal-container';
+            document.body.appendChild(container);
+            return container;
+        })();
+        
+        modalContainer.insertAdjacentHTML('beforeend', modalHtml);
+        
+        const modalElement = document.getElementById(modalId);
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+        
+        // 清理：模态框关闭后移除
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            modalElement.remove();
+        });
+    } catch (error) {
+        console.error('查看处方详情失败:', error);
+        utils.showToast('查看处方详情失败', 'danger');
+    }
+}
+
+// 打印处方（从模态框）
+window.printPrescriptionFromModal = async function(id) {
+    try {
+        const response = await TreatmentAPI.getPrescriptionDetail(id);
+        const prescription = response.data || response;
+        
+        if (!prescription) {
+            utils.showToast('获取处方详情失败', 'danger');
+            return;
+        }
+        
+        // 创建打印窗口
+        const printWindow = window.open('', '_blank');
+        const prescriptionTypeMap = {
+            'western': '西医',
+            'tcm': '中药',
+            'combined': '中西药联合'
+        };
+        
+        // items 可能是数组，也可能是以药品ID为key的对象，需统一为数组
+        const rawItems = prescription.items || [];
+        const items = Array.isArray(rawItems)
+            ? rawItems
+            : (rawItems && typeof rawItems === 'object'
+                ? Object.entries(rawItems).map(([drugId, it]) => ({ drug_id: drugId, ...(it || {}) }))
+                : []);
+        const totalQuantity = items.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
+        
+        // 药品分类中文映射
+        const categoryNameMap = {
+            'western': '西药',
+            'tcm': '中药',
+            'antibiotic': '抗生素',
+            'antiviral': '抗病毒药',
+            'antifungal': '抗真菌药',
+            'antipyretic': '解热镇痛药',
+            'antihistamine': '抗组胺药',
+            'cough': '止咳药',
+            'digestive': '消化系统药',
+            'cardiovascular': '心血管药',
+            'respiratory': '呼吸系统药',
+            'nervous': '神经系统药',
+            'endocrine': '内分泌药',
+            'vitamin': '维生素',
+            'supplement': '保健品',
+            'other': '其他'
+        };
+        
+        // 按药品实际分类统计
+        const categoryCount = {};
+        items.forEach(item => {
+            const category = item.category || 'other';
+            categoryCount[category] = (categoryCount[category] || 0) + 1;
+        });
+        
+        // 构建分类统计文本（显示中文名称）
+        const categoryCountHtml = Object.entries(categoryCount).map(([category, count]) => {
+            const categoryName = categoryNameMap[category.toLowerCase()] || category;
+            return `${categoryName}：${count}种`;
+        }).join('、');
+        
+        const itemsHtml = items.map((item, index) => `
+            <tr>
+                <td style="text-align: center;">${index + 1}</td>
+                <td>${item.drug_name || '-'}</td>
+                <td>${item.specification || '-'}</td>
+                <td style="text-align: center;">${item.quantity || 0} ${item.unit || ''}</td>
+                <td>${item.dosage || item.usage || '-'}</td>
+                <td>${item.batch_no || '-'}</td>
+                <td>${item.manufacturer || '-'}</td>
+                <td style="text-align: right;">¥${Number(item.price || 0).toFixed(2)}</td>
+                <td style="text-align: right;">¥${Number(item.amount || 0).toFixed(2)}</td>
+            </tr>
+        `).join('');
+        
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>处方详情 - ${prescription.prescription_no}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h2 { margin: 0; }
+                    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                    table th, table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    table th { background-color: #f2f2f2; font-weight: bold; }
+                    .info-section { margin-bottom: 20px; }
+                    .info-section h3 { border-bottom: 2px solid #333; padding-bottom: 5px; }
+                    .info-table { width: 100%; }
+                    .info-table th { width: 30%; }
+                    @media print {
+                        body { padding: 0; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>处方详情</h2>
+                </div>
+                
+                <div class="info-section">
+                    <h3>处方信息</h3>
+                    <table class="info-table">
+                        <tr>
+                            <th>处方号：</th>
+                            <td>${prescription.prescription_no || '-'}</td>
+                            <th>患者姓名：</th>
+                            <td>${prescription.patient_name || '-'}</td>
+                        </tr>
+                        <tr>
+                            <th>医生姓名：</th>
+                            <td>${prescription.doctor_name || '-'}</td>
+                            <th>处方类型：</th>
+                            <td>${prescriptionTypeMap[prescription.prescription_type] || prescription.prescription_type || '-'}</td>
+                        </tr>
+                        <tr>
+                            <th>状态：</th>
+                            <td>${prescription.status === 'pending' ? '待发药' : prescription.status === 'dispensed' ? '已发药' : prescription.status || '未知'}</td>
+                            <th>创建时间：</th>
+                            <td>${prescription.created_at ? new Date(prescription.created_at).toLocaleString('zh-CN') : '-'}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div class="info-section">
+                    <h3>统计信息</h3>
+                    <table class="info-table">
+                        <tr>
+                            <th>药品总数：</th>
+                            <td>${items.length} 种</td>
+                            <th>总数量：</th>
+                            <td>${totalQuantity} ${items[0]?.unit || ''}</td>
+                        </tr>
+                        <tr>
+                            <th>分类统计：</th>
+                            <td colspan="3">${categoryCountHtml || '-'}</td>
+                        </tr>
+                        <tr>
+                            <th>总金额：</th>
+                            <td colspan="3" style="font-weight: bold; color: red;">¥${Number(prescription.total_amount || 0).toFixed(2)}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div class="info-section">
+                    <h3>药品明细</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">序号</th>
+                                <th style="width: 15%;">药品名称</th>
+                                <th style="width: 12%;">规格</th>
+                                <th style="width: 10%;">数量</th>
+                                <th style="width: 15%;">用法用量</th>
+                                <th style="width: 10%;">批次号</th>
+                                <th style="width: 13%;">生产厂家</th>
+                                <th style="width: 10%;">单价</th>
+                                <th style="width: 10%;">金额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsHtml || '<tr><td colspan="9" style="text-align: center;">暂无药品明细</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+                
+                ${prescription.remark ? `
+                <div class="info-section">
+                    <h3>备注</h3>
+                    <p>${prescription.remark}</p>
+                </div>
+                ` : ''}
+                
+                <div style="text-align: center; margin-top: 30px; color: #666;">
+                    <p>打印时间：${new Date().toLocaleString('zh-CN')}</p>
+                </div>
+            </body>
+            </html>
+        `);
+        
+        printWindow.document.close();
+        
+        // 等待内容加载完成后打印
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+    } catch (error) {
+        console.error('打印处方失败:', error);
+        utils.showToast('打印处方失败', 'danger');
+    }
+}
+
+// 发药（挂载到全局作用域）
+window.dispensePrescription = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认发药',
+        message: '确定要发药吗？',
+        confirmText: '确认发药',
+        confirmType: 'success'
+    });
+    
+    if (confirmed) {
+        try {
+            await PharmacyAPI.dispensePrescription(id);
+            utils.showToast('发药成功', 'success');
+            if (window.loadDispensePrescriptions) {
+                window.loadDispensePrescriptions();
+            }
+        } catch (error) {
+            console.error('发药失败:', error);
+            const errorMsg = error.message || '发药失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+
+// 页面初始化
+window.pageInit = function() {
+    window.initSearchBar();
+    window.loadDispensePrescriptions();
+};
+</script>
+

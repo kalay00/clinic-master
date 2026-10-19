@@ -1,0 +1,6 @@
+{
+  "name": "electron-main",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "main.cjs"
+}

@@ -1,0 +1,84 @@
+// 主题相关颜色：映射为 Element Plus 响应式 CSS 变量，随 light/dark 自动切换
+$primary-color: var(--el-color-primary);
+$primary-light-color: var(--el-color-primary-light-3);
+$primary-dark-color: var(--el-color-primary-dark-2);
+
+$success-color: var(--el-color-success);
+$warning-color: var(--el-color-warning);
+$danger-color: var(--el-color-danger);
+$info-color: var(--el-color-info);
+
+$text-primary: var(--el-text-color-primary);
+$text-regular: var(--el-text-color-regular);
+$text-secondary: var(--el-text-color-secondary);
+$text-placeholder: var(--el-text-color-placeholder);
+
+$bg-color: var(--el-bg-color);
+$bg-color-page: var(--el-bg-color-page);
+$bg-color-white: var(--el-bg-color-overlay);
+$border-color: var(--el-border-color);
+$border-color-light: var(--el-border-color-light);
+$border-color-lighter: var(--el-border-color-lighter);
+
+$header-bg: var(--el-bg-color);
+// 新 UI：浅色侧边栏（白底 + 左侧蓝色高亮条）
+$sidebar-bg: #ffffff;
+$sidebar-text: #5a5a5a;
+$sidebar-active-text: #5b7cff;
+$sidebar-active-bg: rgba(91, 124, 255, 0.08);
+$sidebar-hover-bg: rgba(91, 124, 255, 0.04);
+$sidebar-border: #eef0f4;
+
+$font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+$font-size-xs: 12px;
+$font-size-sm: 13px;
+$font-size-base: 14px;
+$font-size-lg: 16px;
+$font-size-xl: 18px;
+$font-size-xxl: 20px;
+
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 12px;
+$spacing-base: 16px;
+$spacing-lg: 20px;
+$spacing-xl: 24px;
+$spacing-xxl: 32px;
+
+$border-radius-sm: 2px;
+$border-radius-base: 4px;
+$border-radius-md: 6px;
+$border-radius-lg: 8px;
+$border-radius-round: 20px;
+$border-radius-circle: 50%;
+
+$shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+$shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+
+$transition-base: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+$transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+$header-height: 60px;
+$sidebar-width: 220px;
+$sidebar-collapse-width: 64px;
+$footer-height: 50px;
+
+$z-index-normal: 1;
+$z-index-top: 1000;
+$z-index-popper: 2000;
+
+$dark-bg-color: #141414;
+$dark-bg-color-page: #0a0a0a;
+$dark-bg-color-white: #1d1e1f;
+$dark-text-primary: #e5eaf3;
+$dark-text-regular: #cfd3dc;
+$dark-text-secondary: #a3a6ad;
+$dark-text-placeholder: #8d9095;
+$dark-border-color: #4c4d4f;
+$dark-border-color-light: #363637;
+$dark-border-color-lighter: #262727;
+$dark-header-bg: #1d1e1f;
+$dark-sidebar-bg: #0f1419;
+$dark-card-bg: #1d1e1f;

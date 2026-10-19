@@ -1,0 +1,590 @@
+<!-- 采购单管理页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">采购单管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-cart-plus"></i> 采购单管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-primary" onclick="showAddPurchaseOrderModal()">
+                <i class="bi bi-plus-circle"></i> 新增采购单
+            </button>
+        </div>
+
+<div class="container-fluid py-4">
+
+        <!-- 搜索栏 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form id="search-form" class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">搜索关键词</label>
+                        <input type="text" class="form-control" id="search-keyword" placeholder="采购单号">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">供应商</label>
+                        <select class="form-select" id="search-supplier">
+                            <option value="">全部</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" id="search-status">
+                            <option value="">全部</option>
+                            <option value="draft">草稿</option>
+                            <option value="approved">已审核</option>
+                            <option value="received">已入库</option>
+                            <option value="cancelled">已取消</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">开始日期</label>
+                        <input type="date" class="form-control" id="search-start-date">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">结束日期</label>
+                        <input type="date" class="form-control" id="search-end-date">
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="bi bi-search"></i> 搜索
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 采购单列表 -->
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>采购单号</th>
+                                <th>供应商</th>
+                                <th>采购日期</th>
+                                <th>预计到货日期</th>
+                                <th>总金额</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="purchase-orders-table-body">
+                            <tr>
+                                <td colspan="8" class="text-center">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 分页 -->
+                <div id="pagination-container" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        const pageSize = 10;
+        let searchParams = {};
+        let suppliers = [];
+
+// 挂载到全局作用域，供SPA系统调用
+window.pageInit = async function() {
+            await loadSuppliers();
+            loadPurchaseOrders();
+            
+            // 搜索表单提交
+    const searchForm = document.getElementById('search-form');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                currentPage = 1;
+                searchParams = {
+                    keyword: document.getElementById('search-keyword').value,
+                    supplier_id: document.getElementById('search-supplier').value,
+                    status: document.getElementById('search-status').value,
+                    start_date: document.getElementById('search-start-date').value,
+                    end_date: document.getElementById('search-end-date').value
+                };
+                loadPurchaseOrders();
+            });
+    }
+};
+
+// 加载供应商列表（仅用于填充下拉框）
+        async function loadSuppliers() {
+            try {
+                const response = await InventoryAPI.getSuppliers({ page: 1, page_size: 1000 });
+                suppliers = response.items || response.data?.items || [];
+                
+                const select = document.getElementById('search-supplier');
+        if (select) {
+                select.innerHTML = '<option value="">全部</option>';
+                suppliers.forEach(supplier => {
+                    const option = document.createElement('option');
+                    option.value = supplier.id;
+                    option.textContent = supplier.name;
+                    select.appendChild(option);
+                });
+        }
+            } catch (error) {
+                console.error('加载供应商列表失败:', error);
+            }
+        }
+
+// 加载采购单列表（挂载到全局作用域）
+window.loadPurchaseOrders = async function() {
+            try {
+                const params = {
+                    page: currentPage,
+                    page_size: pageSize,
+                    ...searchParams
+                };
+                
+                const response = await InventoryAPI.getPurchaseOrders(params);
+                const orders = response.items || response.data?.items || [];
+                const pagination = response.pagination || response.data?.pagination || {};
+                
+                renderPurchaseOrdersTable(orders);
+                renderPagination(pagination);
+            } catch (error) {
+                console.error('加载采购单列表失败:', error);
+                utils.showToast('加载采购单列表失败', 'danger');
+            }
+};
+
+        // 渲染采购单表格
+        function renderPurchaseOrdersTable(orders) {
+            const tbody = document.getElementById('purchase-orders-table-body');
+    if (!tbody) return;
+            
+            if (orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center">暂无数据</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = orders.map(order => {
+                const statusBadge = {
+                    'draft': '<span class="badge bg-secondary">草稿</span>',
+                    'approved': '<span class="badge bg-info">已审核</span>',
+                    'received': '<span class="badge bg-success">已入库</span>',
+                    'cancelled': '<span class="badge bg-danger">已取消</span>'
+                }[order.status] || '<span class="badge bg-secondary">未知</span>';
+                
+                let actions = '';
+                if (order.status === 'draft') {
+                    actions += `<button class="btn btn-sm btn-primary" onclick="editPurchaseOrder('${order.id}')">
+                        <i class="bi bi-pencil"></i> 编辑
+                    </button> `;
+                    actions += `<button class="btn btn-sm btn-success" onclick="approvePurchaseOrder('${order.id}')">
+                        <i class="bi bi-check-circle"></i> 审核
+                    </button> `;
+                    actions += `<button class="btn btn-sm btn-danger" onclick="deletePurchaseOrder('${order.id}')">
+                        <i class="bi bi-trash"></i> 删除
+                    </button>`;
+                } else if (order.status === 'approved') {
+                    actions += `<button class="btn btn-sm btn-success" onclick="receivePurchaseOrder('${order.id}')">
+                        <i class="bi bi-box-arrow-in-down"></i> 入库
+                    </button>`;
+                }
+                actions += ` <button class="btn btn-sm btn-info" onclick="viewPurchaseOrder('${order.id}')">
+                    <i class="bi bi-eye"></i> 查看
+                </button>`;
+                
+                return `
+                    <tr>
+                        <td>${order.order_no || '-'}</td>
+                        <td>${order.supplier_name || '-'}</td>
+                        <td>${order.order_date || '-'}</td>
+                        <td>${order.expected_date || '-'}</td>
+                        <td>¥${order.total_amount || 0}</td>
+                        <td>${statusBadge}</td>
+                        <td>${order.created_at ? new Date(order.created_at).toLocaleString() : '-'}</td>
+                        <td>${actions}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 渲染分页
+        function renderPagination(pagination) {
+            const container = document.getElementById('pagination-container');
+            if (!pagination || pagination.pages <= 1) {
+        if (container) container.innerHTML = '';
+                return;
+            }
+            
+            let html = '<nav><ul class="pagination justify-content-center">';
+            
+            html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="changePage(${currentPage - 1}); return false;">上一页</a>
+            </li>`;
+            
+            for (let i = 1; i <= pagination.pages; i++) {
+                if (i === 1 || i === pagination.pages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                    html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a>
+                    </li>`;
+                } else if (i === currentPage - 3 || i === currentPage + 3) {
+                    html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                }
+            }
+            
+            html += `<li class="page-item ${currentPage === pagination.pages ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="changePage(${currentPage + 1}); return false;">下一页</a>
+            </li>`;
+            
+            html += '</ul></nav>';
+            html += `<div class="text-center mt-2">共 ${pagination.total} 条记录</div>`;
+            
+    if (container) container.innerHTML = html;
+        }
+
+// 切换页码（挂载到全局作用域）
+window.changePage = function(page) {
+            currentPage = page;
+            loadPurchaseOrders();
+};
+
+// 显示新增采购单弹窗（挂载到全局作用域）
+window.showAddPurchaseOrderModal = async function() {
+            if (suppliers.length === 0) {
+                await loadSuppliers();
+            }
+            
+            const supplierOptions = [
+                { value: '', text: '请选择供应商' },
+                ...suppliers.map(s => ({ value: s.id, text: s.name }))
+            ];
+            
+            const formHtml = `
+                ${FormComponents.createSelect({
+                    id: 'add-supplier',
+                    label: '供应商',
+                    name: 'supplier_id',
+                    options: supplierOptions,
+                    required: true
+                })}
+                ${FormComponents.createInput({
+                    id: 'add-order-date',
+                    label: '采购日期',
+                    name: 'order_date',
+                    type: 'date',
+                    value: new Date().toISOString().split('T')[0],
+                    required: true
+                })}
+                ${FormComponents.createInput({
+                    id: 'add-expected-date',
+                    label: '预计到货日期',
+                    name: 'expected_date',
+                    type: 'date'
+                })}
+                <div class="mb-3">
+                    <label class="form-label">采购明细</label>
+                    <div id="purchase-items-container">
+                        <div class="purchase-item row g-2 mb-2">
+                            <div class="col-md-4">
+                                <select class="form-select item-drug" required>
+                                    <option value="">请选择药品</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <input type="number" class="form-control item-quantity" placeholder="数量" min="1" required>
+                            </div>
+                            <div class="col-md-2">
+                                <input type="number" class="form-control item-price" placeholder="单价" step="0.01" min="0">
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" class="form-control item-batch" placeholder="批次号">
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" class="form-control item-expiry" placeholder="有效期">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="addPurchaseItem()">
+                        <i class="bi bi-plus"></i> 添加明细
+                    </button>
+                </div>
+                ${FormComponents.createTextarea({
+                    id: 'add-remark',
+                    label: '备注',
+                    name: 'remark'
+                })}
+            `;
+            
+            await ModalComponents.showFormModal({
+                title: '新增采购单',
+                formHtml: formHtml,
+                size: 'xl',
+                onSubmit: async (formData) => {
+                    try {
+                        // 收集明细数据
+                        const items = [];
+                        document.querySelectorAll('.purchase-item').forEach(item => {
+                            const drugId = item.querySelector('.item-drug').value;
+                            const quantity = parseInt(item.querySelector('.item-quantity').value);
+                            const price = parseFloat(item.querySelector('.item-price').value) || 0;
+                            const batch = item.querySelector('.item-batch').value;
+                            const expiry = item.querySelector('.item-expiry').value;
+                            
+                            if (drugId && quantity) {
+                                items.push({
+                                    drug_id: drugId,
+                                    quantity: quantity,
+                                    unit_price: price,
+                                    batch_no: batch || null,
+                                    expiry_date: expiry || null
+                                });
+                            }
+                        });
+                        
+                        if (items.length === 0) {
+                            utils.showToast('请至少添加一条采购明细', 'warning');
+                            return false;
+                        }
+                        
+                        const orderData = {
+                            supplier_id: formData.supplier_id,
+                            order_date: formData.order_date,
+                            expected_date: formData.expected_date || null,
+                            items: items,
+                            remark: formData.remark || null
+                        };
+                        
+                        await InventoryAPI.createPurchaseOrder(orderData);
+                        utils.showToast('创建采购单成功', 'success');
+                        loadPurchaseOrders();
+                        return true;
+                    } catch (error) {
+                        console.error('创建采购单失败:', error);
+                        const errorMsg = error.message || '创建采购单失败';
+                        utils.showToast(errorMsg, 'danger');
+                        return false;
+                    }
+                }
+            });
+            
+            // 加载药品列表
+            loadDrugsForSelect();
+};
+
+        // 加载药品列表（用于下拉选择）
+        async function loadDrugsForSelect() {
+            try {
+                const response = await PharmacyAPI.getDrugs({ page: 1, page_size: 1000 });
+                const drugs = response.items || response.data?.items || [];
+                
+                document.querySelectorAll('.item-drug').forEach(select => {
+                    select.innerHTML = '<option value="">请选择药品</option>';
+                    drugs.forEach(drug => {
+                        const option = document.createElement('option');
+                        option.value = drug.id;
+                        option.textContent = `${drug.name} (${drug.specification || ''})`;
+                        select.appendChild(option);
+                    });
+                });
+            } catch (error) {
+                console.error('加载药品列表失败:', error);
+            }
+        }
+
+        // 添加采购明细
+// 添加采购明细（挂载到全局作用域）
+window.addPurchaseItem = function() {
+            const container = document.getElementById('purchase-items-container');
+    if (!container) return;
+    
+            const newItem = document.createElement('div');
+            newItem.className = 'purchase-item row g-2 mb-2';
+            newItem.innerHTML = `
+                <div class="col-md-4">
+                    <select class="form-select item-drug" required>
+                        <option value="">请选择药品</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control item-quantity" placeholder="数量" min="1" required>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" class="form-control item-price" placeholder="单价" step="0.01" min="0">
+                </div>
+                <div class="col-md-2">
+                    <input type="text" class="form-control item-batch" placeholder="批次号">
+                </div>
+                <div class="col-md-2">
+                    <input type="text" class="form-control item-expiry" placeholder="有效期">
+                    <button type="button" class="btn btn-sm btn-danger mt-1" onclick="removePurchaseItem(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            `;
+            container.appendChild(newItem);
+            loadDrugsForSelect();
+};
+
+// 删除采购明细（挂载到全局作用域）
+window.removePurchaseItem = function(btn) {
+            btn.closest('.purchase-item').remove();
+};
+
+// 查看采购单详情（挂载到全局作用域）
+window.viewPurchaseOrder = async function(id) {
+            try {
+                const response = await InventoryAPI.getPurchaseOrderDetail(id);
+                const order = response.data || response;
+                
+                let itemsHtml = '';
+                if (order.items && order.items.length > 0) {
+                    itemsHtml = order.items.map(item => `
+                        <tr>
+                            <td>${item.drug_name || '-'}</td>
+                            <td>${item.quantity}</td>
+                            <td>¥${item.unit_price}</td>
+                            <td>¥${item.total_amount}</td>
+                            <td>${item.received_quantity || 0}</td>
+                            <td>${item.batch_no || '-'}</td>
+                            <td>${item.expiry_date || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+                
+                const modalHtml = `
+                    <div class="mb-3">
+                        <strong>采购单号：</strong>${order.order_no}
+                    </div>
+                    <div class="mb-3">
+                        <strong>供应商：</strong>${order.supplier_name}
+                    </div>
+                    <div class="mb-3">
+                        <strong>采购日期：</strong>${order.order_date}
+                    </div>
+                    <div class="mb-3">
+                        <strong>预计到货日期：</strong>${order.expected_date || '-'}
+                    </div>
+                    <div class="mb-3">
+                        <strong>总金额：</strong>¥${order.total_amount}
+                    </div>
+                    <div class="mb-3">
+                        <strong>状态：</strong>
+                        <span class="badge ${order.status === 'draft' ? 'bg-secondary' : 
+                                         order.status === 'approved' ? 'bg-info' : 
+                                         order.status === 'received' ? 'bg-success' : 'bg-danger'}">
+                            ${order.status === 'draft' ? '草稿' : 
+                             order.status === 'approved' ? '已审核' : 
+                             order.status === 'received' ? '已入库' : '已取消'}
+                        </span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>备注：</strong>${order.remark || '-'}
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>药品名称</th>
+                                    <th>数量</th>
+                                    <th>单价</th>
+                                    <th>总金额</th>
+                                    <th>已入库</th>
+                                    <th>批次号</th>
+                                    <th>有效期</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${itemsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+        await ModalComponents.showInfoModal({
+                    title: '采购单详情',
+            content: modalHtml,
+                    size: 'lg'
+                });
+            } catch (error) {
+                console.error('获取采购单详情失败:', error);
+                utils.showToast('获取采购单详情失败', 'danger');
+            }
+};
+
+// 编辑采购单（挂载到全局作用域）
+window.editPurchaseOrder = async function(id) {
+            try {
+                const response = await InventoryAPI.getPurchaseOrderDetail(id);
+                const order = response.data || response;
+                
+                if (order.status !== 'draft') {
+                    utils.showToast('只有草稿状态的采购单可以编辑', 'warning');
+                    return;
+                }
+                
+                // 这里可以打开编辑弹窗，类似新增
+                utils.showToast('编辑功能开发中', 'info');
+            } catch (error) {
+                console.error('获取采购单详情失败:', error);
+                utils.showToast('获取采购单详情失败', 'danger');
+            }
+};
+
+// 审核采购单（挂载到全局作用域）
+window.approvePurchaseOrder = async function(id) {
+            if (!confirm('确定要审核该采购单吗？')) {
+                return;
+            }
+            
+            try {
+                await InventoryAPI.approvePurchaseOrder(id);
+                utils.showToast('审核成功', 'success');
+                loadPurchaseOrders();
+            } catch (error) {
+                console.error('审核采购单失败:', error);
+                const errorMsg = error.message || '审核采购单失败';
+                utils.showToast(errorMsg, 'danger');
+            }
+};
+
+// 入库采购单（挂载到全局作用域）
+window.receivePurchaseOrder = async function(id) {
+            if (!confirm('确定要入库该采购单吗？入库后将自动更新库存。')) {
+                return;
+            }
+            
+            try {
+                await InventoryAPI.receivePurchaseOrder(id);
+                utils.showToast('入库成功', 'success');
+                loadPurchaseOrders();
+            } catch (error) {
+                console.error('入库失败:', error);
+                const errorMsg = error.message || '入库失败';
+                utils.showToast(errorMsg, 'danger');
+            }
+};
+
+// 删除采购单（挂载到全局作用域）
+window.deletePurchaseOrder = async function(id) {
+            if (!confirm('确定要删除该采购单吗？')) {
+                return;
+            }
+            
+            try {
+                await InventoryAPI.deletePurchaseOrder(id);
+                utils.showToast('删除采购单成功', 'success');
+                loadPurchaseOrders();
+            } catch (error) {
+                console.error('删除采购单失败:', error);
+                const errorMsg = error.message || '删除采购单失败';
+                utils.showToast(errorMsg, 'danger');
+            }
+};
+    </script>
+

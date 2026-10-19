@@ -1,0 +1,590 @@
+<!-- 系统设置页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('system')">系统管理</a></li>
+            <li class="breadcrumb-item active">系统设置</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-gear"></i> 系统设置</h1>
+</div>
+
+<!-- 标签页导航 -->
+<ul class="nav nav-tabs mb-4" id="settingsTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="pharmacy-tab" data-bs-toggle="tab" data-bs-target="#pharmacy-settings" type="button" role="tab">
+            <i class="bi bi-capsule"></i> 药房设置
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="registration-tab" data-bs-toggle="tab" data-bs-target="#registration-settings" type="button" role="tab">
+            <i class="bi bi-calendar-check"></i> 挂号设置
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="prescription-tab" data-bs-toggle="tab" data-bs-target="#prescription-settings" type="button" role="tab">
+            <i class="bi bi-file-earmark-medical"></i> 处方设置
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="print-tab" data-bs-toggle="tab" data-bs-target="#print-settings" type="button" role="tab">
+            <i class="bi bi-printer"></i> 打印设置
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system-settings" type="button" role="tab">
+            <i class="bi bi-gear-wide"></i> 系统设置
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="info-tab" data-bs-toggle="tab" data-bs-target="#system-info" type="button" role="tab">
+            <i class="bi bi-info-circle"></i> 系统信息
+        </button>
+    </li>
+</ul>
+
+<!-- 标签页内容 -->
+<div class="tab-content" id="settingsTabContent">
+    <!-- 药房设置 -->
+    <div class="tab-pane fade show active" id="pharmacy-settings" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-capsule"></i> 药房设置</h5>
+            </div>
+            <div class="card-body">
+                <form id="pharmacyConfigForm">
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="pharmacistReviewSwitch" style="transform: scale(1.5);">
+                            <label class="form-check-label ms-3" for="pharmacistReviewSwitch">
+                                <strong>启用药师审核</strong>
+                                <br>
+                                <small class="text-muted">
+                                    开启后，发药时需要药师审核用药禁忌。关闭时，所有用药禁忌默认审核通过。
+                                </small>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>说明：</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>开启药师审核：发药时需要药师审核用药禁忌，确保用药安全</li>
+                            <li>关闭药师审核：所有用药禁忌自动审核通过，加快发药流程</li>
+                            <li>此设置仅对当前租户生效</li>
+                        </ul>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary" onclick="if(window.savePharmacyConfig) window.savePharmacyConfig()">
+                            <i class="bi bi-save"></i> 保存设置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 挂号设置 -->
+    <div class="tab-pane fade" id="registration-settings" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-calendar-check"></i> 挂号设置</h5>
+            </div>
+            <div class="card-body">
+                <form id="registrationConfigForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="maxAdvanceDays" class="form-label">最大提前预约天数 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="maxAdvanceDays" min="1" max="365" required>
+                            <small class="text-muted">患者可以提前多少天预约挂号</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="defaultFee" class="form-label">默认挂号费（元） <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="defaultFee" min="0" step="0.01" required>
+                            <small class="text-muted">新建挂号时的默认费用</small>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="allowSameDay" style="transform: scale(1.5);">
+                                <label class="form-check-label ms-3" for="allowSameDay">
+                                    <strong>允许当天挂号</strong>
+                                    <br>
+                                    <small class="text-muted">开启后，患者可以在当天挂号</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="autoCompleteVisit" style="transform: scale(1.5);">
+                                <label class="form-check-label ms-3" for="autoCompleteVisit">
+                                    <strong>支付后自动完成就诊</strong>
+                                    <br>
+                                    <small class="text-muted">开启后，支付挂号费后自动将状态设为已完成</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary" onclick="if(window.saveRegistrationConfig) window.saveRegistrationConfig()">
+                            <i class="bi bi-save"></i> 保存设置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 处方设置 -->
+    <div class="tab-pane fade" id="prescription-settings" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-medical"></i> 处方设置</h5>
+            </div>
+            <div class="card-body">
+                <form id="prescriptionConfigForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="validityDays" class="form-label">处方有效期（天） <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="validityDays" min="1" max="30" required>
+                            <small class="text-muted">处方从开具之日起的有效天数</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="defaultType" class="form-label">默认处方类型 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="defaultType" required>
+                                <option value="western">西药</option>
+                                <option value="traditional">中药</option>
+                                <option value="chinese_medicine">中西药联合</option>
+                            </select>
+                            <small class="text-muted">新建处方时的默认类型</small>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="requireDoctorSignature" style="transform: scale(1.5);">
+                                <label class="form-check-label ms-3" for="requireDoctorSignature">
+                                    <strong>需要医生签名</strong>
+                                    <br>
+                                    <small class="text-muted">开启后，处方必须要有医生签名才能生效</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="allowEditAfterSave" style="transform: scale(1.5);">
+                                <label class="form-check-label ms-3" for="allowEditAfterSave">
+                                    <strong>保存后允许编辑</strong>
+                                    <br>
+                                    <small class="text-muted">开启后，保存的处方可以再次编辑</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary" onclick="if(window.savePrescriptionConfig) window.savePrescriptionConfig()">
+                            <i class="bi bi-save"></i> 保存设置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 打印设置 -->
+    <div class="tab-pane fade" id="print-settings" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-printer"></i> 打印设置</h5>
+            </div>
+            <div class="card-body">
+                <form id="printConfigForm">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="defaultBillTemplate" class="form-label">默认账单打印模板</label>
+                            <select class="form-select" id="defaultBillTemplate">
+                                <option value="">使用系统默认</option>
+                            </select>
+                            <small class="text-muted">账单打印时使用的默认模板</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="defaultPrescriptionTemplate" class="form-label">默认处方打印模板</label>
+                            <select class="form-select" id="defaultPrescriptionTemplate">
+                                <option value="">使用系统默认</option>
+                            </select>
+                            <small class="text-muted">处方打印时使用的默认模板</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="defaultMedicalRecordTemplate" class="form-label">默认病历打印模板</label>
+                            <select class="form-select" id="defaultMedicalRecordTemplate">
+                                <option value="">使用系统默认</option>
+                            </select>
+                            <small class="text-muted">病历打印时使用的默认模板</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoPrintAfterPayment" style="transform: scale(1.5);">
+                            <label class="form-check-label ms-3" for="autoPrintAfterPayment">
+                                <strong>支付后自动打印</strong>
+                                <br>
+                                <small class="text-muted">开启后，支付成功后自动打印账单</small>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>提示：</strong>打印模板管理请前往 <a href="#" onclick="if(window.app && window.app.navigate) { window.app.navigate('system/print-templates'); return false; }">打印模板管理</a> 页面进行配置。
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary" onclick="if(window.savePrintConfig) window.savePrintConfig()">
+                            <i class="bi bi-save"></i> 保存设置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统设置 -->
+    <div class="tab-pane fade" id="system-settings" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-gear-wide"></i> 系统设置</h5>
+            </div>
+            <div class="card-body">
+                <form id="systemConfigForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="sessionTimeout" class="form-label">会话超时时间（秒） <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="sessionTimeout" min="300" max="86400" required>
+                            <small class="text-muted">用户无操作后自动登出的时间（最小300秒）</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="passwordMinLength" class="form-label">密码最小长度 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="passwordMinLength" min="6" max="32" required>
+                            <small class="text-muted">用户密码的最小长度要求（最小6位）</small>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="requirePasswordChange" style="transform: scale(1.5);">
+                                <label class="form-check-label ms-3" for="requirePasswordChange">
+                                    <strong>首次登录要求修改密码</strong>
+                                    <br>
+                                    <small class="text-muted">开启后，新用户首次登录必须修改密码</small>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="enableAuditLog" style="transform: scale(1.5);">
+                                <label class="form-check-label ms-3" for="enableAuditLog">
+                                    <strong>启用审计日志</strong>
+                                    <br>
+                                    <small class="text-muted">开启后，系统会记录所有重要操作日志</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-primary" onclick="if(window.saveSystemConfig) window.saveSystemConfig()">
+                            <i class="bi bi-save"></i> 保存设置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统信息 -->
+    <div class="tab-pane fade" id="system-info" role="tabpanel">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> 系统信息</h5>
+            </div>
+            <div class="card-body">
+                <div id="systemInfoContent">
+                    <div class="text-center">
+                        <i class="bi bi-hourglass-split"></i> 加载中...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+window.pageInit = function() {
+    // 延迟执行，确保DOM已加载
+    setTimeout(() => {
+        // 加载所有配置
+        if (window.loadAllConfigs) {
+            window.loadAllConfigs();
+        }
+        
+        // 加载打印模板列表
+        if (window.loadPrintTemplates) {
+            window.loadPrintTemplates();
+        }
+        
+        // 加载系统信息
+        if (window.loadSystemInfo) {
+            window.loadSystemInfo();
+        }
+    }, 100);
+};
+
+/**
+ * 加载所有配置（挂载到全局作用域）
+ */
+window.loadAllConfigs = async function() {
+    try {
+        const response = await TenantAPI.getConfig();
+        const config = response.data || response.config || {};
+        
+        // 加载药房设置
+        const pharmacistSwitch = document.getElementById('pharmacistReviewSwitch');
+        if (pharmacistSwitch) {
+            pharmacistSwitch.checked = config.pharmacist_review_enabled || false;
+        }
+        
+        // 加载挂号设置
+        const registration = config.registration || {};
+        const maxAdvanceDays = document.getElementById('maxAdvanceDays');
+        if (maxAdvanceDays) maxAdvanceDays.value = registration.max_advance_days || 30;
+        const defaultFee = document.getElementById('defaultFee');
+        if (defaultFee) defaultFee.value = registration.default_fee || 10.0;
+        const allowSameDay = document.getElementById('allowSameDay');
+        if (allowSameDay) allowSameDay.checked = registration.allow_same_day !== false;
+        const autoCompleteVisit = document.getElementById('autoCompleteVisit');
+        if (autoCompleteVisit) autoCompleteVisit.checked = registration.auto_complete_visit || false;
+        
+        // 加载处方设置
+        const prescription = config.prescription || {};
+        const validityDays = document.getElementById('validityDays');
+        if (validityDays) validityDays.value = prescription.validity_days || 7;
+        const defaultType = document.getElementById('defaultType');
+        if (defaultType) defaultType.value = prescription.default_type || 'western';
+        const requireDoctorSignature = document.getElementById('requireDoctorSignature');
+        if (requireDoctorSignature) requireDoctorSignature.checked = prescription.require_doctor_signature !== false;
+        const allowEditAfterSave = document.getElementById('allowEditAfterSave');
+        if (allowEditAfterSave) allowEditAfterSave.checked = prescription.allow_edit_after_save || false;
+        
+        // 加载打印设置
+        const print = config.print || {};
+        const defaultBillTemplate = document.getElementById('defaultBillTemplate');
+        if (defaultBillTemplate) defaultBillTemplate.value = print.default_bill_template || '';
+        const defaultPrescriptionTemplate = document.getElementById('defaultPrescriptionTemplate');
+        if (defaultPrescriptionTemplate) defaultPrescriptionTemplate.value = print.default_prescription_template || '';
+        const defaultMedicalRecordTemplate = document.getElementById('defaultMedicalRecordTemplate');
+        if (defaultMedicalRecordTemplate) defaultMedicalRecordTemplate.value = print.default_medical_record_template || '';
+        const autoPrintAfterPayment = document.getElementById('autoPrintAfterPayment');
+        if (autoPrintAfterPayment) autoPrintAfterPayment.checked = print.auto_print_after_payment || false;
+        
+        // 加载系统设置
+        const system = config.system || {};
+        const sessionTimeout = document.getElementById('sessionTimeout');
+        if (sessionTimeout) sessionTimeout.value = system.session_timeout || 3600;
+        const passwordMinLength = document.getElementById('passwordMinLength');
+        if (passwordMinLength) passwordMinLength.value = system.password_min_length || 6;
+        const requirePasswordChange = document.getElementById('requirePasswordChange');
+        if (requirePasswordChange) requirePasswordChange.checked = system.require_password_change || false;
+        const enableAuditLog = document.getElementById('enableAuditLog');
+        if (enableAuditLog) enableAuditLog.checked = system.enable_audit_log !== false;
+    } catch (error) {
+        console.error('加载配置失败:', error);
+        utils.showToast('加载配置失败', 'danger');
+    }
+};
+
+/**
+ * 保存药房配置（挂载到全局作用域）
+ */
+window.savePharmacyConfig = async function() {
+    const switchElement = document.getElementById('pharmacistReviewSwitch');
+    if (!switchElement) {
+        utils.showToast('找不到配置开关', 'danger');
+        return;
+    }
+    
+    try {
+        const response = await TenantAPI.updateConfig({
+            config: {
+                pharmacist_review_enabled: switchElement.checked
+            }
+        });
+        
+        utils.showToast('配置保存成功', 'success');
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        utils.showToast(error.message || '保存配置失败', 'danger');
+    }
+};
+
+/**
+ * 保存挂号配置（挂载到全局作用域）
+ */
+window.saveRegistrationConfig = async function() {
+    try {
+        const maxAdvanceDays = parseInt(document.getElementById('maxAdvanceDays').value);
+        const defaultFee = parseFloat(document.getElementById('defaultFee').value);
+        const allowSameDay = document.getElementById('allowSameDay').checked;
+        const autoCompleteVisit = document.getElementById('autoCompleteVisit').checked;
+        
+        const response = await TenantAPI.updateConfig({
+            config: {
+                registration: {
+                    max_advance_days: maxAdvanceDays,
+                    default_fee: defaultFee,
+                    allow_same_day: allowSameDay,
+                    auto_complete_visit: autoCompleteVisit
+                }
+            }
+        });
+        
+        utils.showToast('配置保存成功', 'success');
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        utils.showToast(error.message || '保存配置失败', 'danger');
+    }
+};
+
+/**
+ * 保存处方配置（挂载到全局作用域）
+ */
+window.savePrescriptionConfig = async function() {
+    try {
+        const validityDays = parseInt(document.getElementById('validityDays').value);
+        const defaultType = document.getElementById('defaultType').value;
+        const requireDoctorSignature = document.getElementById('requireDoctorSignature').checked;
+        const allowEditAfterSave = document.getElementById('allowEditAfterSave').checked;
+        
+        const response = await TenantAPI.updateConfig({
+            config: {
+                prescription: {
+                    validity_days: validityDays,
+                    default_type: defaultType,
+                    require_doctor_signature: requireDoctorSignature,
+                    allow_edit_after_save: allowEditAfterSave
+                }
+            }
+        });
+        
+        utils.showToast('配置保存成功', 'success');
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        utils.showToast(error.message || '保存配置失败', 'danger');
+    }
+};
+
+/**
+ * 保存打印配置（挂载到全局作用域）
+ */
+window.savePrintConfig = async function() {
+    try {
+        const defaultBillTemplate = document.getElementById('defaultBillTemplate').value || null;
+        const defaultPrescriptionTemplate = document.getElementById('defaultPrescriptionTemplate').value || null;
+        const defaultMedicalRecordTemplate = document.getElementById('defaultMedicalRecordTemplate').value || null;
+        const autoPrintAfterPayment = document.getElementById('autoPrintAfterPayment').checked;
+        
+        const response = await TenantAPI.updateConfig({
+            config: {
+                print: {
+                    default_bill_template: defaultBillTemplate,
+                    default_prescription_template: defaultPrescriptionTemplate,
+                    default_medical_record_template: defaultMedicalRecordTemplate,
+                    auto_print_after_payment: autoPrintAfterPayment
+                }
+            }
+        });
+        
+        utils.showToast('配置保存成功', 'success');
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        utils.showToast(error.message || '保存配置失败', 'danger');
+    }
+};
+
+/**
+ * 保存系统配置（挂载到全局作用域）
+ */
+window.saveSystemConfig = async function() {
+    try {
+        const sessionTimeout = parseInt(document.getElementById('sessionTimeout').value);
+        const passwordMinLength = parseInt(document.getElementById('passwordMinLength').value);
+        const requirePasswordChange = document.getElementById('requirePasswordChange').checked;
+        const enableAuditLog = document.getElementById('enableAuditLog').checked;
+        
+        const response = await TenantAPI.updateConfig({
+            config: {
+                system: {
+                    session_timeout: sessionTimeout,
+                    password_min_length: passwordMinLength,
+                    require_password_change: requirePasswordChange,
+                    enable_audit_log: enableAuditLog
+                }
+            }
+        });
+        
+        utils.showToast('配置保存成功', 'success');
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        utils.showToast(error.message || '保存配置失败', 'danger');
+    }
+};
+
+/**
+ * 加载打印模板列表（挂载到全局作用域）
+ */
+window.loadPrintTemplates = async function() {
+    try {
+        // 这里需要调用打印模板API，如果存在的话
+        // const response = await PrintTemplateAPI.getList();
+        // 暂时留空，等待打印模板API实现
+    } catch (error) {
+        console.warn('加载打印模板列表失败:', error);
+    }
+};
+
+/**
+ * 加载系统信息（挂载到全局作用域）
+ */
+window.loadSystemInfo = async function() {
+    try {
+        const response = await TenantAPI.getConfig();
+        const config = response.data || {};
+        
+        const infoContent = document.getElementById('systemInfoContent');
+        if (!infoContent) return;
+        
+        // 获取租户信息（如果有API的话）
+        // 暂时显示配置信息
+        infoContent.innerHTML = `
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <strong>配置版本：</strong>
+                    <span class="text-muted">v1.0</span>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <strong>最后更新时间：</strong>
+                    <span class="text-muted">${new Date().toLocaleString('zh-CN')}</span>
+                </div>
+            </div>
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                <strong>提示：</strong>系统信息功能正在完善中，更多信息将陆续添加。
+            </div>
+        `;
+    } catch (error) {
+        console.error('加载系统信息失败:', error);
+        const infoContent = document.getElementById('systemInfoContent');
+        if (infoContent) {
+            infoContent.innerHTML = '<div class="alert alert-danger">加载系统信息失败</div>';
+        }
+    }
+};
+</script>

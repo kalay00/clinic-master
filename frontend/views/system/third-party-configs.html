@@ -1,0 +1,442 @@
+<!-- 系统管理 - 第三方服务配置页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('system/users')">系统管理</a></li>
+            <li class="breadcrumb-item active">第三方服务配置</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-cloud"></i> 第三方服务配置</h1>
+</div>
+
+<!-- 配置列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-list-ul"></i> 服务配置列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="config-list-container">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2 text-muted">正在加载配置列表...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 配置表单模态框 -->
+<div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="configModalLabel">配置第三方服务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="configForm">
+                    <input type="hidden" id="configServiceType" name="service_type">
+                    
+                    <!-- 服务类型显示 -->
+                    <div class="mb-3">
+                        <label class="form-label">服务类型</label>
+                        <input type="text" class="form-control" id="configServiceName" readonly>
+                    </div>
+                    
+                    <!-- 是否启用 -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="configIsEnabled" name="is_enabled" checked>
+                            <label class="form-check-label" for="configIsEnabled">启用此服务</label>
+                        </div>
+                    </div>
+                    
+                    <!-- 配置表单区域 -->
+                    <div id="configFormFields"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-info" id="testConfigBtn" onclick="testConfig()">
+                    <i class="bi bi-check-circle"></i> 测试配置
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveConfig()">
+                    <i class="bi bi-save"></i> 保存配置
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 服务类型定义和配置模板
+const SERVICE_TYPES = {
+    aliyun_sms: {
+        name: '阿里云短信',
+        icon: 'bi-envelope',
+        fields: [
+            { key: 'access_key_id', label: 'AccessKey ID', type: 'text', required: true, encrypted: true, placeholder: '请输入AccessKey ID' },
+            { key: 'access_key_secret', label: 'AccessKey Secret', type: 'password', required: true, encrypted: true, placeholder: '请输入AccessKey Secret' },
+            { key: 'sign_name', label: '签名名称', type: 'text', required: true, placeholder: '请输入短信签名名称' },
+            { key: 'template_code', label: '模板代码', type: 'text', required: true, placeholder: '请输入短信模板代码' },
+            { key: 'region', label: '区域', type: 'text', required: false, placeholder: 'cn-hangzhou', value: 'cn-hangzhou' }
+        ],
+        testParams: {
+            phone: { label: '测试手机号', type: 'text', required: true },
+            message: { label: '测试消息', type: 'text', required: true, value: '这是一条测试短信' }
+        }
+    },
+    alipay: {
+        name: '支付宝',
+        icon: 'bi-credit-card',
+        fields: [
+            { key: 'app_id', label: 'App ID', type: 'text', required: true, placeholder: '请输入支付宝App ID' },
+            { key: 'app_private_key', label: '应用私钥', type: 'textarea', required: true, encrypted: true, placeholder: '请输入应用私钥（RSA私钥）', rows: 4 },
+            { key: 'alipay_public_key', label: '支付宝公钥', type: 'textarea', required: true, encrypted: true, placeholder: '请输入支付宝公钥', rows: 4 },
+            { key: 'sign_type', label: '签名类型', type: 'text', required: true, value: 'RSA2', placeholder: 'RSA2' },
+            { key: 'gateway_url', label: '网关地址', type: 'text', required: false, value: 'https://openapi.alipay.com/gateway.do', placeholder: '网关地址' },
+            { key: 'notify_url', label: '回调URL', type: 'text', required: false, placeholder: '支付结果通知URL' },
+            { key: 'return_url', label: '返回URL', type: 'text', required: false, placeholder: '支付成功返回URL' }
+        ],
+        testParams: {}
+    },
+    wechat_pay: {
+        name: '微信支付',
+        icon: 'bi-wechat',
+        fields: [
+            { key: 'app_id', label: 'App ID', type: 'text', required: true, placeholder: '请输入微信App ID' },
+            { key: 'mch_id', label: '商户号', type: 'text', required: true, placeholder: '请输入商户号' },
+            { key: 'api_key', label: 'API密钥', type: 'password', required: true, encrypted: true, placeholder: '请输入API密钥' },
+            { key: 'app_secret', label: 'App Secret', type: 'password', required: false, encrypted: true, placeholder: '请输入App Secret' },
+            { key: 'cert_path', label: '证书路径', type: 'text', required: false, placeholder: '证书文件路径' },
+            { key: 'key_path', label: '私钥路径', type: 'text', required: false, placeholder: '私钥文件路径' },
+            { key: 'notify_url', label: '回调URL', type: 'text', required: false, placeholder: '支付结果通知URL' }
+        ],
+        testParams: {}
+    },
+    unionpay: {
+        name: '银联支付',
+        icon: 'bi-bank',
+        fields: [
+            { key: 'mer_id', label: '商户号', type: 'text', required: true, placeholder: '请输入商户号' },
+            { key: 'mer_key', label: '商户密钥', type: 'password', required: true, encrypted: true, placeholder: '请输入商户密钥' },
+            { key: 'gateway_url', label: '网关地址', type: 'text', required: false, value: 'https://gateway.95516.com/gateway/api/order.do', placeholder: '网关地址' },
+            { key: 'version', label: '版本号', type: 'text', required: false, value: '5.1.0', placeholder: '版本号' },
+            { key: 'notify_url', label: '回调URL', type: 'text', required: false, placeholder: '支付结果通知URL' },
+            { key: 'return_url', label: '返回URL', type: 'text', required: false, placeholder: '支付成功返回URL' }
+        ],
+        testParams: {}
+    }
+};
+
+// 页面初始化
+window.pageInit = async function() {
+    await loadConfigList();
+};
+
+// 加载配置列表
+async function loadConfigList() {
+    const container = document.getElementById('config-list-container');
+    if (!container) return;
+    
+    try {
+        const response = await ThirdPartyConfigAPI.getList();
+        const configs = (response.data?.items || response.items || []);
+        
+        // 创建配置列表
+        let html = '<div class="row g-3">';
+        
+        // 遍历所有服务类型
+        for (const [serviceType, serviceInfo] of Object.entries(SERVICE_TYPES)) {
+            const config = configs.find(c => c.service_type === serviceType);
+            const isEnabled = config?.is_enabled || false;
+            const hasConfig = !!config;
+            
+            html += `
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 ${hasConfig && isEnabled ? 'border-success' : hasConfig ? 'border-warning' : 'border-secondary'}">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <i class="bi ${serviceInfo.icon} fs-2 text-primary me-2"></i>
+                                <div>
+                                    <h6 class="mb-0">${serviceInfo.name}</h6>
+                                    <small class="text-muted">${serviceType}</small>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <span class="badge ${hasConfig && isEnabled ? 'bg-success' : hasConfig ? 'bg-warning' : 'bg-secondary'}">
+                                    ${hasConfig && isEnabled ? '已启用' : hasConfig ? '已配置' : '未配置'}
+                                </span>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-outline-primary" onclick="showConfigModal('${serviceType}')">
+                                    <i class="bi ${hasConfig ? 'bi-pencil' : 'bi-plus-circle'}"></i> ${hasConfig ? '编辑配置' : '添加配置'}
+                                </button>
+                                ${hasConfig ? `
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('${serviceType}')">
+                                        <i class="bi bi-trash"></i> 删除配置
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('加载配置列表失败:', error);
+        if (window.ErrorHandler) {
+            ErrorHandler.handleApiError(error);
+        }
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> 加载配置列表失败: ${error.message || '未知错误'}
+            </div>
+        `;
+    }
+}
+
+// 显示配置模态框
+async function showConfigModal(serviceType) {
+    const serviceInfo = SERVICE_TYPES[serviceType];
+    if (!serviceInfo) {
+        ErrorHandler.showError('不支持的服务类型');
+        return;
+    }
+    
+    // 设置模态框标题
+    document.getElementById('configModalLabel').textContent = `配置${serviceInfo.name}`;
+    document.getElementById('configServiceType').value = serviceType;
+    document.getElementById('configServiceName').value = serviceInfo.name;
+    
+    // 尝试加载现有配置
+    let existingConfig = null;
+    try {
+        const response = await ThirdPartyConfigAPI.getConfig(serviceType);
+        existingConfig = response.data || response;
+    } catch (error) {
+        // 如果配置不存在，继续创建新配置
+        if (error.response?.status !== 404) {
+            console.error('加载配置失败:', error);
+        }
+    }
+    
+    // 设置是否启用
+    if (existingConfig) {
+        document.getElementById('configIsEnabled').checked = existingConfig.is_enabled || false;
+    } else {
+        document.getElementById('configIsEnabled').checked = true;
+    }
+    
+    // 生成配置表单字段
+    const formFieldsContainer = document.getElementById('configFormFields');
+    let formHtml = '';
+    
+    for (const field of serviceInfo.fields) {
+        const value = existingConfig?.config_data?.[field.key] || field.value || '';
+        const isPassword = field.type === 'password';
+        const isTextarea = field.type === 'textarea';
+        
+        formHtml += `
+            <div class="mb-3">
+                <label class="form-label">
+                    ${field.label}
+                    ${field.required ? '<span class="text-danger">*</span>' : ''}
+                    ${field.encrypted ? '<span class="badge bg-info ms-1">加密存储</span>' : ''}
+                </label>
+                ${isTextarea ? `
+                    <textarea 
+                        class="form-control" 
+                        id="config_${field.key}" 
+                        name="${field.key}"
+                        rows="${field.rows || 3}"
+                        placeholder="${field.placeholder || ''}"
+                        ${field.required ? 'required' : ''}
+                    >${value}</textarea>
+                ` : `
+                    <input 
+                        type="${isPassword ? 'password' : field.type}" 
+                        class="form-control" 
+                        id="config_${field.key}" 
+                        name="${field.key}"
+                        value="${value}"
+                        placeholder="${field.placeholder || ''}"
+                        ${field.required ? 'required' : ''}
+                    >
+                `}
+                ${field.encrypted && value ? `
+                    <small class="form-text text-muted">
+                        <i class="bi bi-lock"></i> 此字段已加密存储，如需修改请重新输入
+                    </small>
+                ` : ''}
+            </div>
+        `;
+    }
+    
+    formFieldsContainer.innerHTML = formHtml;
+    
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('configModal'));
+    modal.show();
+}
+
+// 保存配置
+async function saveConfig() {
+    const form = document.getElementById('configForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+    
+    const serviceType = document.getElementById('configServiceType').value;
+    const serviceInfo = SERVICE_TYPES[serviceType];
+    const isEnabled = document.getElementById('configIsEnabled').checked;
+    
+    // 收集表单数据
+    const configData = {};
+    for (const field of serviceInfo.fields) {
+        const input = document.getElementById(`config_${field.key}`);
+        if (input && input.value) {
+            configData[field.key] = input.value.trim();
+        } else if (field.required) {
+            ErrorHandler.showError(`请填写${field.label}`);
+            return;
+        }
+    }
+    
+    const loadingBtn = event.target;
+    const originalText = loadingBtn.innerHTML;
+    loadingBtn.disabled = true;
+    loadingBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>保存中...';
+    
+    try {
+        const response = await ThirdPartyConfigAPI.saveConfig({
+            service_type: serviceType,
+            config_data: configData,
+            is_enabled: isEnabled
+        });
+        
+        if (window.ErrorHandler) {
+            ErrorHandler.showSuccess('配置保存成功');
+        }
+        
+        // 关闭模态框
+        const modal = bootstrap.Modal.getInstance(document.getElementById('configModal'));
+        modal.hide();
+        
+        // 重新加载列表
+        await loadConfigList();
+        
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        if (window.ErrorHandler) {
+            ErrorHandler.handleApiError(error);
+        }
+    } finally {
+        loadingBtn.disabled = false;
+        loadingBtn.innerHTML = originalText;
+    }
+}
+
+// 删除配置
+async function deleteConfig(serviceType) {
+    const serviceInfo = SERVICE_TYPES[serviceType];
+    
+    if (!confirm(`确定要删除${serviceInfo.name}的配置吗？此操作不可恢复。`)) {
+        return;
+    }
+    
+    try {
+        await ThirdPartyConfigAPI.deleteConfig(serviceType);
+        
+        if (window.ErrorHandler) {
+            ErrorHandler.showSuccess('配置删除成功');
+        }
+        
+        // 重新加载列表
+        await loadConfigList();
+        
+    } catch (error) {
+        console.error('删除配置失败:', error);
+        if (window.ErrorHandler) {
+            ErrorHandler.handleApiError(error);
+        }
+    }
+}
+
+// 测试配置
+async function testConfig() {
+    const serviceType = document.getElementById('configServiceType').value;
+    const serviceInfo = SERVICE_TYPES[serviceType];
+    
+    // 收集测试参数
+    const testParams = {};
+    if (serviceInfo.testParams && Object.keys(serviceInfo.testParams).length > 0) {
+        // 显示测试参数输入框
+        let testParamsHtml = '<hr><h6>测试参数</h6>';
+        for (const [key, param] of Object.entries(serviceInfo.testParams)) {
+            testParamsHtml += `
+                <div class="mb-3">
+                    <label class="form-label">${param.label}${param.required ? '<span class="text-danger">*</span>' : ''}</label>
+                    <input 
+                        type="${param.type || 'text'}" 
+                        class="form-control" 
+                        id="test_${key}" 
+                        value="${param.value || ''}"
+                        ${param.required ? 'required' : ''}
+                    >
+                </div>
+            `;
+        }
+        
+        // 添加到表单中（如果还没有）
+        const formFieldsContainer = document.getElementById('configFormFields');
+        if (!formFieldsContainer.querySelector('#testParamsSection')) {
+            formFieldsContainer.insertAdjacentHTML('beforeend', `<div id="testParamsSection">${testParamsHtml}</div>`);
+        }
+        
+        // 收集测试参数
+        for (const key of Object.keys(serviceInfo.testParams)) {
+            const input = document.getElementById(`test_${key}`);
+            if (input && input.value) {
+                testParams[key] = input.value.trim();
+            } else if (serviceInfo.testParams[key].required) {
+                ErrorHandler.showError(`请填写测试参数：${serviceInfo.testParams[key].label}`);
+                return;
+            }
+        }
+    }
+    
+    const testBtn = document.getElementById('testConfigBtn');
+    const originalText = testBtn.innerHTML;
+    testBtn.disabled = true;
+    testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>测试中...';
+    
+    try {
+        const response = await ThirdPartyConfigAPI.testConfig(serviceType, testParams);
+        
+        if (response.success) {
+            ErrorHandler.showSuccess('配置测试成功！');
+        } else {
+            ErrorHandler.showError(response.message || '配置测试失败');
+        }
+        
+    } catch (error) {
+        console.error('测试配置失败:', error);
+        if (window.ErrorHandler) {
+            ErrorHandler.handleApiError(error);
+        }
+    } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = originalText;
+    }
+}
+
+</script>
+

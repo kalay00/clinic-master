@@ -1,0 +1,33 @@
+# 桌面端开发测试模式（叠加在 docker-compose.yml 之上使用）
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.desktop.dev.yml up -d
+#
+# 与生产构建（docker/desktop/Dockerfile + nginx，端口 8080）相互独立：
+# 本模式直接运行 vite dev server（端口 5174），挂载宿主机源码，支持 HMR 热更新，
+# 适合边改边测。API 走 .env.development 里的 http://localhost:9000/api/v1（后端已映射到宿主机 9000）。
+
+services:
+  his-desktop-dev:
+    container_name: his-desktop-dev
+    build:
+      context: ../
+      dockerfile: ./docker/desktop/Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    environment:
+      # 浏览器侧 API 地址（后端容器已映射到宿主机 9000，CORS=* 可直接跨域）
+      - VITE_API_BASE_URL=http://localhost:9000/api/v1
+      # 跳过 Electron 二进制下载
+      - ELECTRON_SKIP_BINARY_DOWNLOAD=1
+      # Docker for Mac 下 bind mount 无法触发 inotify，需开启轮询以实现 HMR
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      # 挂载源码，改文件即时热更新
+      - ../desktop:/app
+      # node_modules 用匿名卷保存，避免被宿主机（可能不完整的）node_modules 覆盖
+      - /app/node_modules
+    depends_on:
+      his-backend:
+        condition: service_healthy

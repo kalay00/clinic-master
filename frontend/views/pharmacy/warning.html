@@ -1,0 +1,301 @@
+<!-- 库存预警页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('pharmacy')">药房管理</a></li>
+            <li class="breadcrumb-item active">库存预警</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-exclamation-triangle"></i> 库存预警</h1>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <h6>低库存药品</h6>
+                <h3 id="low-stock-count">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <h6>过期药品</h6>
+                <h3 id="expired-count">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h6>即将过期（30天内）</h6>
+                <h3 id="expiring-soon-count">0</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 低库存药品 -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill text-warning"></i> 低库存药品</h5>
+    </div>
+    <div class="card-body">
+        <div id="low-stock-table-container"></div>
+    </div>
+</div>
+
+<!-- 过期药品 -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-x-circle-fill text-danger"></i> 过期药品</h5>
+    </div>
+    <div class="card-body">
+        <div id="expired-table-container"></div>
+    </div>
+</div>
+
+<!-- 即将过期药品 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-clock-fill text-info"></i> 即将过期药品（30天内）</h5>
+    </div>
+    <div class="card-body">
+        <div id="expiring-soon-table-container"></div>
+    </div>
+</div>
+
+<script>
+window.pageInit = function() {
+    loadWarningData();
+};
+
+// 加载预警数据
+async function loadWarningData() {
+    try {
+        // 调用实际API
+        const response = await PharmacyAPI.getInventoryWarnings();
+        
+        // 模拟数据（如果API返回的数据格式不同，需要适配）
+        const mockData = {
+            low_stock: response.low_stock || [],
+            expired: response.expired || [],
+            expiring_soon: response.expiring_soon || []
+        };
+        
+        // 更新统计
+        document.getElementById('low-stock-count').textContent = mockData.low_stock.length;
+        document.getElementById('expired-count').textContent = mockData.expired.length;
+        document.getElementById('expiring-soon-count').textContent = mockData.expiring_soon.length;
+        
+        // 渲染低库存表格
+        renderLowStockTable(mockData.low_stock);
+        
+        // 渲染过期药品表格
+        renderExpiredTable(mockData.expired);
+        
+        // 渲染即将过期表格
+        renderExpiringSoonTable(mockData.expiring_soon);
+        
+    } catch (error) {
+        console.error('加载预警数据失败:', error);
+        utils.showToast('加载预警数据失败', 'danger');
+    }
+}
+
+// 渲染低库存表格
+function renderLowStockTable(data) {
+    const container = document.getElementById('low-stock-table-container');
+    container.innerHTML = TableComponents.renderTable({
+        id: 'low-stock-table',
+        columns: [
+            {
+                title: '药品编码',
+                key: 'code',
+                align: 'center'
+            },
+            {
+                title: '药品名称',
+                key: 'name',
+                align: 'left'
+            },
+            {
+                title: '当前库存',
+                key: 'current_stock',
+                align: 'center',
+                render: (row) => `<span class="text-danger fw-bold">${row.current_stock}</span>`
+            },
+            {
+                title: '最低库存',
+                key: 'min_stock',
+                align: 'center'
+            },
+            {
+                title: '单位',
+                key: 'unit',
+                align: 'center'
+            },
+            {
+                title: '操作',
+                key: 'actions',
+                align: 'center',
+                render: (row) => `
+                    <button class="btn btn-sm btn-primary" onclick="stockIn('${row.id}')">
+                        <i class="bi bi-box-arrow-in-down"></i> 入库
+                    </button>
+                `
+            }
+        ],
+        data: data,
+        emptyText: '暂无低库存药品'
+    });
+}
+
+// 渲染过期药品表格
+function renderExpiredTable(data) {
+    const container = document.getElementById('expired-table-container');
+    container.innerHTML = TableComponents.renderTable({
+        id: 'expired-table',
+        columns: [
+            {
+                title: '药品编码',
+                key: 'code',
+                align: 'center'
+            },
+            {
+                title: '药品名称',
+                key: 'name',
+                align: 'left'
+            },
+            {
+                title: '批次号',
+                key: 'batch_no',
+                align: 'center'
+            },
+            {
+                title: '过期日期',
+                key: 'expiry_date',
+                align: 'center',
+                render: (row) => `<span class="text-danger fw-bold">${row.expiry_date}</span>`
+            },
+            {
+                title: '数量',
+                key: 'quantity',
+                align: 'center'
+            },
+            {
+                title: '单位',
+                key: 'unit',
+                align: 'center'
+            },
+            {
+                title: '操作',
+                key: 'actions',
+                align: 'center',
+                render: (row) => `
+                    <button class="btn btn-sm btn-danger" onclick="handleExpired('${row.id}')">
+                        <i class="bi bi-trash"></i> 处理
+                    </button>
+                `
+            }
+        ],
+        data: data,
+        emptyText: '暂无过期药品'
+    });
+}
+
+// 渲染即将过期表格
+function renderExpiringSoonTable(data) {
+    const container = document.getElementById('expiring-soon-table-container');
+    container.innerHTML = TableComponents.renderTable({
+        id: 'expiring-soon-table',
+        columns: [
+            {
+                title: '药品编码',
+                key: 'code',
+                align: 'center'
+            },
+            {
+                title: '药品名称',
+                key: 'name',
+                align: 'left'
+            },
+            {
+                title: '批次号',
+                key: 'batch_no',
+                align: 'center'
+            },
+            {
+                title: '过期日期',
+                key: 'expiry_date',
+                align: 'center'
+            },
+            {
+                title: '剩余天数',
+                key: 'days_left',
+                align: 'center',
+                render: (row) => `<span class="text-warning fw-bold">${row.days_left}天</span>`
+            },
+            {
+                title: '数量',
+                key: 'quantity',
+                align: 'center'
+            },
+            {
+                title: '单位',
+                key: 'unit',
+                align: 'center'
+            },
+            {
+                title: '操作',
+                key: 'actions',
+                align: 'center',
+                render: (row) => `
+                    <button class="btn btn-sm btn-warning" onclick="handleExpiringSoon('${row.id}')">
+                        <i class="bi bi-exclamation-triangle"></i> 提醒
+                    </button>
+                `
+            }
+        ],
+        data: data,
+        emptyText: '暂无即将过期药品'
+    });
+}
+
+// 入库
+function stockIn(drugId) {
+    window.location.href = `/views/pharmacy/list.html?action=stockin&drug_id=${drugId}`;
+}
+
+// 处理过期药品
+async function handleExpired(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '处理过期药品',
+        message: '确定要处理该过期药品吗？',
+        confirmText: '确认处理',
+        confirmType: 'danger'
+    });
+    
+    if (confirmed) {
+        try {
+            // TODO: 调用实际API处理过期药品
+            await PharmacyAPI.stockOut({ drug_id: id, reason: '过期处理' });
+            utils.showToast('处理成功', 'success');
+            loadWarningData();
+        } catch (error) {
+            console.error('处理失败:', error);
+            const errorMsg = error.message || '处理失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+
+// 提醒即将过期
+function handleExpiringSoon(id) {
+    utils.showToast('提醒功能待实现', 'info');
+}
+</script>
+

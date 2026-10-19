@@ -1,0 +1,186 @@
+<template>
+  <div class="app-container">
+    <div class="page-head">
+      <div class="page-title">药品信息维护</div>
+      <div class="head-actions">
+        <el-button type="primary" :icon="Plus" @click="goCreate">新增药品</el-button>
+        <el-button type="primary" plain :icon="FullScreen" @click="scanCreate">扫码录入</el-button>
+        <el-button :icon="Upload" @click="onImport">导入</el-button>
+        <el-button :icon="Download" @click="onExport">导出</el-button>
+      </div>
+    </div>
+
+    <el-card class="page-card" shadow="never">
+      <el-form :inline="true" class="filter-form">
+        <el-form-item label="药品分类">
+          <el-select v-model="query.category_id" placeholder="全部" clearable style="width: 130px">
+            <el-option label="全部" value="" />
+            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="药品状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px">
+            <el-option label="全部" value="" />
+            <el-option label="启用" value="active" />
+            <el-option label="停用" value="inactive" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="创建时间">
+          <el-date-picker
+            v-model="query.dateRange"
+            type="daterange"
+            range-separator="-"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 240px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="query.keyword" placeholder="输入药品名称/编码/生产厂家" style="width: 240px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :icon="Search" @click="onSearch">查询</el-button>
+        </el-form-item>
+      </el-form>
+
+      <el-table :data="tableData" border stripe v-loading="loading">
+        <el-table-column type="index" label="序号" width="55" />
+        <el-table-column prop="drug_code" label="编码" min-width="100" />
+        <el-table-column prop="name" label="药品名称" min-width="180" />
+        <el-table-column prop="specification" label="规格" min-width="120" />
+        <el-table-column label="收费类别" width="110">
+          <template #default="{ row }">{{ categoryName(row) }}</template>
+        </el-table-column>
+        <el-table-column label="采购价" width="90"><template #default>-</template></el-table-column>
+        <el-table-column label="售药价" width="90">
+          <template #default="{ row }">{{ row.price != null ? `¥${Number(row.price).toFixed(2)}` : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="manufacturer" label="生产厂家" min-width="180" />
+        <el-table-column label="状态" width="80">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+              {{ row.status === 'active' ? '启用' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="创建时间" width="160" />
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link :icon="Edit" @click="onEdit(row)">编辑</el-button>
+            <el-button type="primary" link :icon="CopyDocument" @click="onCopy(row)">复制</el-button>
+            <el-button type="danger" link :icon="CircleClose" @click="onToggleStatus(row)">停用</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        class="list-pagination"
+        v-model:current-page="query.page"
+        v-model:page-size="query.pageSize"
+        layout="total, prev, pager, next, jumper"
+        :total="total"
+        @current-change="onSearch"
+        @size-change="onSearch"
+      />
+    </el-card>
+  </div>
+</template>
+
+<script setup>
+import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Plus, FullScreen, Upload, Download, Search, Edit, CopyDocument, CircleClose
+} from '@element-plus/icons-vue'
+import { getDrugs, updateDrug, getDrugCategories } from '@/api/pharmacy'
+import { fetchAllPages } from '@/utils/paging'
+
+defineOptions({ name: 'DrugMaintain' })
+
+const router = useRouter()
+const loading = ref(false)
+const total = ref(0)
+const categories = ref([])
+const tableData = ref([])
+
+const query = reactive({
+  page: 1, pageSize: 10,
+  category_id: '', status: '', keyword: ''
+})
+
+function categoryName(row) {
+  if (row.category_name) return row.category_name
+  const hit = categories.value.find(c => c.id === row.category_id)
+  return hit ? hit.name : row.category || '-'
+}
+
+async function onSearch() {
+  loading.value = true
+  try {
+    const data = await getDrugs({
+      page: query.page,
+      page_size: query.pageSize,
+      keyword: query.keyword || undefined,
+      category: query.category_id || undefined,
+      status: query.status || undefined
+    })
+    tableData.value = data.items || []
+    total.value = data.total || 0
+  } catch (e) {
+    ElMessage.error('加载药品列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+const onImport = () => ElMessage.info('导入功能开发中')
+const onExport = () => ElMessage.info('导出功能开发中')
+const goCreate = () => router.push('/drugs/create-western')
+const scanCreate = () => ElMessage.info('扫码录入开发中')
+const onEdit = (row) => router.push(`/drugs/create-western?id=${row.id}`)
+const onCopy = (row) => ElMessage.info('复制功能开发中')
+const onToggleStatus = async (row) => {
+  const next = row.status === 'active' ? 'inactive' : 'active'
+  const action = next === 'inactive' ? '停用' : '启用'
+  try {
+    await ElMessageBox.confirm(`确定${action}药品 ${row.name} 吗？`, '提示', { type: 'warning' })
+    await updateDrug(row.id, { status: next })
+    ElMessage.success(`${action}成功`)
+    onSearch()
+  } catch (e) { /* cancel */ }
+}
+
+async function loadCategories() {
+  try {
+    categories.value = await fetchAllPages(p => getDrugCategories(p))
+  } catch (e) { /* 分类非强依赖 */ }
+}
+
+onMounted(() => {
+  loadCategories()
+  onSearch()
+})
+</script>
+
+<style lang="scss" scoped>
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.head-actions {
+  display: flex;
+  gap: 10px;
+}
+.filter-form {
+  margin-bottom: 12px;
+  :deep(.el-form-item) {
+    margin-bottom: 10px;
+  }
+}
+.list-pagination {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+</style>

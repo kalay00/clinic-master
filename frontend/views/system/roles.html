@@ -1,0 +1,399 @@
+<!-- 角色权限管理页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('system')">系统管理</a></li>
+            <li class="breadcrumb-item active">角色权限</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-shield-check"></i> 角色权限管理</h1>
+        <button type="button" class="btn btn-primary" onclick="if(window.showAddRoleModal) window.showAddRoleModal()">
+            <i class="bi bi-plus-circle"></i> 新增角色
+        </button>
+    </div>
+</div>
+
+<!-- 角色列表 -->
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">角色列表</h5>
+            </div>
+            <div class="card-body">
+                <div id="roles-list-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">权限配置</h5>
+            </div>
+            <div class="card-body">
+                <div id="permissions-container">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 请从左侧选择一个角色进行权限配置
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedRoleId = null;
+
+window.pageInit = function() {
+    if (window.loadRoles) {
+        window.loadRoles();
+    }
+};
+
+// 获取资源名称（挂载到全局作用域）
+window.getResourceName = function(resource) {
+    const resourceNames = {
+        'patient': '患者管理',
+        'registration': '挂号管理',
+        'treatment': '诊疗管理',
+        'payment': '收费管理',
+        'pharmacy': '药房管理',
+        'report': '报表统计',
+        'system': '系统管理',
+        'user': '用户管理',
+        'role': '角色管理',
+        'department': '科室管理',
+        'doctor': '医生管理',
+        'inventory': '进销存管理',
+        'tcm': '中医管理',
+        'other': '其他'
+    };
+    return resourceNames[resource] || resource;
+};
+
+// 加载角色列表（挂载到全局作用域）
+window.loadRoles = async function() {
+    const container = document.getElementById('roles-list-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API
+        const response = await RoleAPI.getList();
+        // 处理后端响应格式 {code, message, data: [...]}
+        let roles = [];
+        if (response && response.data && Array.isArray(response.data)) {
+            roles = response.data;
+        } else if (response && response.items) {
+            roles = response.items;
+        } else if (Array.isArray(response)) {
+            roles = response;
+        }
+        
+        // 模拟数据（如果API返回的数据格式不同，需要适配）
+        if (roles.length === 0) {
+            roles.push(
+            {
+                id: '1',
+                name: '系统管理员',
+                code: 'admin',
+                description: '拥有所有权限',
+                user_count: 2
+            },
+            {
+                id: '2',
+                name: '医生',
+                code: 'doctor',
+                description: '诊疗相关权限',
+                user_count: 5
+            },
+            {
+                id: '3',
+                name: '护士',
+                code: 'nurse',
+                description: '护理相关权限',
+                user_count: 3
+            },
+            {
+                id: '4',
+                name: '收费员',
+                code: 'cashier',
+                description: '收费相关权限',
+                user_count: 2
+            }
+            );
+        }
+        
+        container.innerHTML = roles.map(role => `
+            <div class="card mb-2 role-item ${selectedRoleId === role.id ? 'border-primary' : ''}" 
+                 style="cursor: pointer;" onclick="if(window.selectRole) window.selectRole('${role.id}')">
+                <div class="card-body">
+                    <h6 class="mb-1">${role.name}</h6>
+                    <p class="text-muted small mb-1">${role.description}</p>
+                    <span class="badge bg-secondary">${role.user_count}人</span>
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('加载角色列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败</div>';
+        utils.showToast('加载角色列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 选择角色（挂载到全局作用域）
+window.selectRole = async function(roleId) {
+    selectedRoleId = roleId;
+    
+    // 更新选中样式
+    document.querySelectorAll('.role-item').forEach(item => {
+        item.classList.remove('border-primary');
+    });
+    const roleItem = document.querySelector(`[onclick="selectRole('${roleId}')"]`);
+    if (roleItem) {
+        roleItem.closest('.role-item')?.classList.add('border-primary');
+    }
+    
+    // 加载权限配置
+    if (window.loadPermissions) {
+        await window.loadPermissions(roleId);
+    }
+}
+
+// 加载权限配置（挂载到全局作用域）
+window.loadPermissions = async function(roleId) {
+    const container = document.getElementById('permissions-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API
+        const [roleResponse, allPermissionsResponse] = await Promise.all([
+            RoleAPI.getDetail(roleId),
+            RoleAPI.getAllPermissions()
+        ]);
+        console.log(roleResponse, allPermissionsResponse);
+        // 处理后端响应格式
+        let role = roleResponse;
+        if (roleResponse && roleResponse.data) {
+            role = roleResponse.data;
+        }
+        
+        let allPermissions = [];
+        if (allPermissionsResponse && allPermissionsResponse.data && Array.isArray(allPermissionsResponse.data)) {
+            allPermissions = allPermissionsResponse.data;
+        } else if (allPermissionsResponse && allPermissionsResponse.items) {
+            allPermissions = allPermissionsResponse.items;
+        } else if (Array.isArray(allPermissionsResponse)) {
+            allPermissions = allPermissionsResponse;
+        }
+        
+        const rolePermissions = role.permissions || [];
+        const selectedPermissionIds = rolePermissions.map(p => p.id || p);
+        
+        // 按资源分组权限
+        const permissionsByResource = {};
+        allPermissions.forEach(perm => {
+            const resource = perm.resource || 'other';
+            if (!permissionsByResource[resource]) {
+                permissionsByResource[resource] = {
+                    id: resource,
+                    name: window.getResourceName ? window.getResourceName(resource) : resource,
+                    code: resource,
+                    children: []
+                };
+            }
+            permissionsByResource[resource].children.push({
+                id: perm.id,
+                name: perm.name,
+                code: perm.code,
+                action: perm.action
+            });
+        });
+        
+        const permissions = Object.values(permissionsByResource);
+        
+        let html = `
+            <form id="permissions-form">
+                <div class="permission-tree">
+        `;
+        
+        permissions.forEach(module => {
+            const moduleChecked = module.children.length > 0 && module.children.every(child => selectedPermissionIds.includes(child.id));
+            const moduleIndeterminate = module.children.some(child => selectedPermissionIds.includes(child.id)) && !moduleChecked;
+            
+            html += `
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <div class="form-check">
+                            <input class="form-check-input module-checkbox" type="checkbox" 
+                                   id="module-${module.id}" 
+                                   data-module-id="${module.id}"
+                                   ${moduleChecked ? 'checked' : ''}
+                                   ${moduleIndeterminate ? 'indeterminate' : ''}
+                                   onchange="if(window.toggleModule) window.toggleModule('${module.id}')">
+                            <label class="form-check-label fw-bold" for="module-${module.id}">
+                                ${module.name}
+                            </label>
+                        </div>
+                        <div class="ms-4 mt-2">
+            `;
+            
+            module.children.forEach(permission => {
+                const checked = selectedPermissionIds.includes(permission.id);
+                html += `
+                    <div class="form-check">
+                        <input class="form-check-input permission-checkbox" type="checkbox" 
+                               id="permission-${permission.id}" 
+                               name="permissions[]"
+                               value="${permission.id}"
+                               data-module-id="${module.id}"
+                               ${checked ? 'checked' : ''}
+                               onchange="if(window.togglePermission) window.togglePermission('${module.id}')">
+                        <label class="form-check-label" for="permission-${permission.id}">
+                            ${permission.name}
+                        </label>
+                    </div>
+                `;
+            });
+            
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-primary" onclick="if(window.savePermissions) window.savePermissions()">
+                        <i class="bi bi-check-circle"></i> 保存权限
+                    </button>
+                </div>
+            </form>
+        `;
+        
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('加载权限配置失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败</div>';
+        utils.showToast('加载权限配置失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 切换模块权限（挂载到全局作用域）
+window.toggleModule = function(moduleId) {
+    const moduleCheckbox = document.getElementById(`module-${moduleId}`);
+    const permissions = document.querySelectorAll(`.permission-checkbox[data-module-id="${moduleId}"]`);
+    
+    permissions.forEach(permission => {
+        permission.checked = moduleCheckbox.checked;
+    });
+}
+
+// 切换单个权限（挂载到全局作用域）
+window.togglePermission = function(moduleId) {
+    const permissions = document.querySelectorAll(`.permission-checkbox[data-module-id="${moduleId}"]`);
+    const moduleCheckbox = document.getElementById(`module-${moduleId}`);
+    
+    const allChecked = Array.from(permissions).every(p => p.checked);
+    const someChecked = Array.from(permissions).some(p => p.checked);
+    
+    moduleCheckbox.checked = allChecked;
+    moduleCheckbox.indeterminate = someChecked && !allChecked;
+}
+
+// 保存权限（挂载到全局作用域）
+window.savePermissions = async function() {
+    if (!selectedRoleId) {
+        utils.showToast('请先选择角色', 'warning');
+        return;
+    }
+    
+    const form = document.getElementById('permissions-form');
+    const formData = new FormData(form);
+    const permissionIds = formData.getAll('permissions[]');
+    
+    try {
+                await RoleAPI.assignPermissions(selectedRoleId, permissionIds);
+                utils.showToast('保存权限成功', 'success');
+                if (window.loadPermissions) {
+                    await window.loadPermissions(selectedRoleId);
+                }
+    } catch (error) {
+        console.error('保存权限失败:', error);
+        const errorMsg = error.message || '保存权限失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+}
+
+// 显示新增角色弹窗（挂载到全局作用域）
+window.showAddRoleModal = async function() {
+    const formHtml = `
+        ${FormComponents.createInput({
+            id: 'role-name',
+            label: '角色名称',
+            name: 'name',
+            required: true,
+            placeholder: '请输入角色名称'
+        })}
+        ${FormComponents.createInput({
+            id: 'role-code',
+            label: '角色编码',
+            name: 'code',
+            required: true,
+            placeholder: '请输入角色编码（英文）'
+        })}
+        ${FormComponents.createTextarea({
+            id: 'role-description',
+            label: '角色描述',
+            name: 'description',
+            rows: 3,
+            placeholder: '请输入角色描述'
+        })}
+    `;
+    
+    await ModalComponents.showFormModal({
+        title: '新增角色',
+        formHtml: formHtml,
+        size: 'lg',
+        onSubmit: async (data) => {
+            try {
+                await RoleAPI.create(data);
+                utils.showToast('新增角色成功', 'success');
+                if (window.loadRoles) {
+                    window.loadRoles();
+                }
+                return true;
+            } catch (error) {
+                console.error('新增角色失败:', error);
+                const errorMsg = error.message || '新增角色失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+</script>
+
+<style>
+.permission-tree .card {
+    border: 1px solid #dee2e6;
+}
+
+.permission-tree .form-check {
+    margin-bottom: 0.5rem;
+}
+
+.role-item:hover {
+    background-color: #f8f9fa;
+}
+</style>
+

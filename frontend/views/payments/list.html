@@ -1,0 +1,826 @@
+<!-- 收费管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">收费管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-cash-coin"></i> 收费管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-primary" onclick="showPaymentModal()">
+        <i class="bi bi-cash-stack"></i> 收费结算
+    </button>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 账单列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">账单列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="bills-table-container"></div>
+        <div id="bills-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+// 挂载到全局作用域
+window.pageInit = function() {
+    window.initSearchBar();
+    window.loadBills();
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'bill-search',
+        placeholder: '请输入账单号、患者姓名搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            if (window.loadBills) {
+                window.loadBills();
+            }
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'status-filter',
+                label: '支付状态',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'unpaid', text: '未支付' },
+                    { value: 'paid', text: '已支付' },
+                    { value: 'refunded', text: '已退费' },
+                    { value: 'partial', text: '部分支付' }
+                ],
+                onChange: (value) => {
+                    currentPage = 1;
+                    if (window.loadBills) {
+                        window.loadBills();
+                    }
+                }
+            },
+            {
+                type: 'select',
+                id: 'bill-type-filter',
+                label: '账单类型',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'registration', text: '挂号费' },
+                    { value: 'treatment', text: '诊疗费' },
+                    { value: 'pharmacy', text: '药费' },
+                    { value: 'consultation', text: '诊疗费' }
+                ],
+                onChange: (value) => {
+                    currentPage = 1;
+                    if (window.loadBills) {
+                        window.loadBills();
+                    }
+                }
+            }
+        ]
+    });
+}
+
+// 加载账单列表（挂载到全局作用域）
+window.loadBills = async function() {
+    const container = document.getElementById('bills-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 获取筛选条件
+        const statusFilter = document.getElementById('status-filter');
+        const billTypeFilter = document.getElementById('bill-type-filter');
+        const status = statusFilter ? statusFilter.value : '';
+        const billType = billTypeFilter ? billTypeFilter.value : '';
+        
+        // 构建API参数，空字符串不传递（显示全部）
+        const params = {
+            page: currentPage,
+            page_size: pageSize
+        };
+        if (searchKeyword) {
+            params.keyword = searchKeyword;
+        }
+        if (status) {  // 只有非空字符串才传递
+            params.status = status;
+        }
+        if (billType) {  // 只有非空字符串才传递
+            params.bill_type = billType;
+        }
+        
+        // 调用实际API
+        const response = await PaymentAPI.getBills(params);
+        
+        // 处理后端响应格式 {code, message, data: {items: [], pagination: {total, page, page_size, pages}}}
+        let mockData = {
+            items: [],
+            total: 0,
+            page: currentPage,
+            page_size: pageSize,
+            total_pages: 0
+        };
+        
+        if (response && response.data) {
+            // 标准响应格式 {code, message, data: {items, pagination}}
+            if (response.data.items) {
+                mockData.items = response.data.items;
+            }
+            if (response.data.pagination) {
+                mockData.total = response.data.pagination.total || 0;
+                mockData.page = response.data.pagination.page || currentPage;
+                mockData.page_size = response.data.pagination.page_size || pageSize;
+                mockData.total_pages = response.data.pagination.pages || 0;
+            }
+        } else if (response && response.items) {
+            // 直接返回items数组
+            mockData.items = response.items;
+            if (response.pagination) {
+                mockData.total = response.pagination.total || 0;
+                mockData.page = response.pagination.page || currentPage;
+                mockData.page_size = response.pagination.page_size || pageSize;
+                mockData.total_pages = response.pagination.pages || 0;
+            }
+        } else if (Array.isArray(response)) {
+            // 直接是数组
+            mockData.items = response;
+            mockData.total = response.length;
+        }
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'bills-table',
+            columns: [
+                {
+                    title: '账单号',
+                    key: 'bill_no',
+                    align: 'center',
+                    render: (row) => row.bill_no || row.bill_number || row.id
+                },
+                {
+                    title: '患者姓名',
+                    key: 'patient_name',
+                    align: 'center'
+                },
+                {
+                    title: '账单类型',
+                    key: 'bill_type',
+                    align: 'center',
+                    render: (row) => {
+                        const typeMap = {
+                            'registration': '挂号费',
+                            'treatment': '诊疗费',
+                            'pharmacy': '药费',
+                            'consultation': '诊疗费'
+                        };
+                        return typeMap[row.bill_type] || row.bill_type || '-';
+                    }
+                },
+                {
+                    title: '挂号号',
+                    key: 'registration_no',
+                    align: 'center',
+                    render: (row) => row.registration_no || '-'
+                },
+                {
+                    title: '总金额',
+                    key: 'total_amount',
+                    align: 'right',
+                    render: (row) => utils.formatMoney(row.total_amount)
+                },
+                {
+                    title: '已支付',
+                    key: 'paid_amount',
+                    align: 'right',
+                    render: (row) => utils.formatMoney(row.paid_amount)
+                },
+                {
+                    title: '支付状态',
+                    key: 'payment_status',
+                    align: 'center',
+                    render: (row) => {
+                        const statusMap = {
+                            'unpaid': { text: '未支付', class: 'warning' },
+                            'paid': { text: '已支付', class: 'success' },
+                            'refunded': { text: '已退费', class: 'danger' },
+                            'partial_refunded': { text: '已退费', class: 'danger' },
+                            'partial': { text: '部分支付', class: 'info' },
+                            'pending': { text: '待支付', class: 'warning' }
+                        };
+                        // 优先使用payment_status，如果没有则使用status
+                        const statusValue = row.payment_status || row.status || 'unpaid';
+                        const status = statusMap[statusValue] || { text: statusValue, class: 'secondary' };
+                        return `<span class="badge bg-${status.class}">${status.text}</span>`;
+                    }
+                },
+                {
+                    title: '支付方式',
+                    key: 'payment_method',
+                    align: 'center',
+                    render: (row) => {
+                        const methodMap = {
+                            'cash': '现金',
+                            'wechat': '微信',
+                            'alipay': '支付宝',
+                            'unionpay': '银联',
+                            'medical_insurance': '医保'
+                        };
+                        return methodMap[row.payment_method] || row.payment_method || '-';
+                    }
+                },
+                {
+                    title: '创建时间',
+                    key: 'created_at',
+                    align: 'center',
+                    render: (row) => {
+                        if (!row.created_at) return '-';
+                        try {
+                            const date = new Date(row.created_at);
+                            if (isNaN(date.getTime())) return row.created_at;
+                            return utils.formatDate(date, 'YYYY-MM-DD HH:mm:ss');
+                        } catch (e) {
+                            return row.created_at;
+                        }
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => {
+                        const statusValue = row.payment_status || row.status || 'unpaid';
+                        let html = `<button class="btn btn-sm btn-outline-primary" onclick="if(window.viewBill) window.viewBill('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>`;
+                        if (statusValue === 'unpaid' || statusValue === 'partial') {
+                            html += `<button class="btn btn-sm btn-outline-success ms-1" onclick="if(window.payBill) window.payBill('${row.id}')">
+                                <i class="bi bi-credit-card"></i> 支付
+                            </button>`;
+                        }
+                        if (statusValue === 'paid') {
+                            html += `<button class="btn btn-sm btn-outline-danger ms-1" onclick="if(window.refundBill) window.refundBill('${row.id}')">
+                                <i class="bi bi-arrow-counterclockwise"></i> 退费
+                            </button>`;
+                        }
+                        return html;
+                    }
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无账单数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('bills-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    if (window.loadBills) {
+                        window.loadBills();
+                    }
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载账单列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载账单列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示收费结算弹窗（挂载到全局作用域）
+window.showPaymentModal = async function() {
+    let selectedPatient = null;
+    let patientRegistrations = [];
+    
+    // 加载患者挂号记录的函数（挂载到window以便外部调用）
+    window.loadPatientRegistrationsForPayment = async (patientId) => {
+        if (!patientId) {
+            patientRegistrations = [];
+            updateRegistrationSelect();
+            return;
+        }
+        
+        try {
+            const response = await RegistrationAPI.getList({
+                page: 1,
+                page_size: 100,
+                patient_id: patientId
+            });
+            
+            let items = [];
+            if (response && response.data) {
+                items = response.data.items || [];
+            } else if (response && response.items) {
+                items = response.items || [];
+            } else if (Array.isArray(response)) {
+                items = response;
+            }
+            
+            // 过滤出待就诊和已完成的挂号记录（排除已取消的）
+            patientRegistrations = items.filter(reg => 
+                reg.status !== 'cancelled'
+            );
+            
+            updateRegistrationSelect();
+        } catch (error) {
+            console.error('加载挂号记录失败:', error);
+            patientRegistrations = [];
+            updateRegistrationSelect();
+        }
+    };
+    
+    // 计算挂号号下未支付账单的总金额
+    const calculateUnpaidAmount = async (registrationId) => {
+        if (!registrationId) {
+            return 0;
+        }
+        
+        try {
+            // 查询该挂号号下所有未支付的账单
+            // 注意：账单状态为unpaid（未支付），不是pending
+            const response = await PaymentAPI.getBills({
+                page: 1,
+                page_size: 1000,
+                registration_id: registrationId,
+                status: 'unpaid' // 只查询未支付的账单（unpaid状态）
+            });
+            
+            let bills = [];
+            if (response && response.data) {
+                bills = response.data.items || [];
+            } else if (response && response.items) {
+                bills = response.items || [];
+            } else if (Array.isArray(response)) {
+                bills = response;
+            }
+            
+            // 计算未支付金额总和
+            // 未支付金额 = total_amount - paid_amount - insurance_amount
+            let totalUnpaid = 0;
+            bills.forEach(bill => {
+                const total = parseFloat(bill.total_amount || 0);
+                const paid = parseFloat(bill.paid_amount || 0);
+                const insurance = parseFloat(bill.insurance_amount || 0);
+                const unpaid = total - paid - insurance;
+                if (unpaid > 0) {
+                    totalUnpaid += unpaid;
+                }
+            });
+            
+            return totalUnpaid;
+        } catch (error) {
+            console.error('计算未支付金额失败:', error);
+            return 0;
+        }
+    };
+    
+    // 更新挂号号选择框（挂载到window以便外部调用）
+    window.updateRegistrationSelectForPayment = () => {
+        const select = document.getElementById('registration-id-select');
+        if (!select) return;
+        
+        const billTypeSelect = document.getElementById('bill-type-select');
+        const billType = billTypeSelect ? billTypeSelect.value : '';
+        const isRegistrationRequired = billType && billType !== 'registration';
+        
+        // 更新必填标记
+        const label = select.previousElementSibling;
+        if (label && label.tagName === 'LABEL') {
+            if (isRegistrationRequired) {
+                if (!label.querySelector('.text-danger')) {
+                    label.innerHTML = label.innerHTML.replace('挂号号', '挂号号 <span class="text-danger">*</span>');
+                }
+                select.required = true;
+            } else {
+                label.innerHTML = label.innerHTML.replace(/<span class="text-danger">\*<\/span>/g, '');
+                select.required = false;
+            }
+        }
+        
+        // 更新选项
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">请选择挂号号</option>';
+        
+        if (patientRegistrations.length === 0) {
+            select.innerHTML += '<option value="" disabled>该患者暂无挂号记录</option>';
+        } else {
+            patientRegistrations.forEach(reg => {
+                const regNo = reg.registration_no || reg.id;
+                const regDate = reg.registration_date || reg.appointment_time || '';
+                const doctorName = reg.doctor_name || '';
+                const text = `${regNo}${regDate ? ' - ' + regDate : ''}${doctorName ? ' - ' + doctorName : ''}`;
+                select.innerHTML += `<option value="${reg.id}">${text}</option>`;
+            });
+        }
+        
+        // 恢复之前选择的值
+        if (currentValue) {
+            select.value = currentValue;
+        }
+    };
+    
+    // 内部使用的别名（保持兼容性）
+    const updateRegistrationSelect = window.updateRegistrationSelectForPayment;
+    
+    const formHtml = `
+        <div class="mb-3">
+            <label class="form-label">患者 <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <input type="text" class="form-control" id="payment-patient-input" 
+                       placeholder="请选择患者" 
+                       value="${selectedPatient ? selectedPatient.name : ''}" 
+                       readonly required>
+                <input type="hidden" id="payment-patient-id" name="patient_id">
+                <button class="btn btn-outline-primary" type="button" onclick="selectPatientForPayment()">
+                    <i class="bi bi-search"></i> 选择患者
+                </button>
+            </div>
+        </div>
+        ${FormComponents.createSelect({
+            id: 'bill-type-select',
+            label: '账单类型 <span class="text-danger">*</span>',
+            name: 'bill_type',
+            required: true,
+            options: [
+                { value: 'registration', text: '挂号费' },
+                { value: 'consultation', text: '诊疗费' },
+                { value: 'pharmacy', text: '药费' }
+            ]
+        })}
+        <div class="mb-3" id="registration-id-container">
+            <label class="form-label">挂号号</label>
+            <select class="form-select" id="registration-id-select" name="registration_id">
+                <option value="">请先选择患者</option>
+            </select>
+            <small class="form-text text-muted">除挂号费外，所有账单必须关联挂号号</small>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">总金额 <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="total-amount" name="total_amount" 
+                   value="0.00" min="0" step="0.01" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">优惠金额</label>
+            <input type="number" class="form-control" id="discount-amount" name="discount_amount" 
+                   value="0.00" min="0" step="0.01">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">医保支付金额</label>
+            <input type="number" class="form-control" id="insurance-amount" name="insurance_amount" 
+                   value="0.00" min="0" step="0.01">
+        </div>
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '收费结算',
+        formHtml: formHtml,
+        size: 'lg',
+        onShow: () => {
+            // 监听账单类型变化
+            const billTypeSelect = document.getElementById('bill-type-select');
+            if (billTypeSelect) {
+                billTypeSelect.addEventListener('change', () => {
+                    if (window.updateRegistrationSelectForPayment) {
+                        window.updateRegistrationSelectForPayment();
+                    }
+                });
+            }
+            
+            // 监听挂号号选择变化，自动计算未支付金额
+            const registrationSelect = document.getElementById('registration-id-select');
+            if (registrationSelect) {
+                registrationSelect.addEventListener('change', async () => {
+                    const registrationId = registrationSelect.value;
+                    const totalAmountInput = document.getElementById('total-amount');
+                    
+                    if (registrationId && totalAmountInput) {
+                        // 显示加载状态
+                        totalAmountInput.disabled = true;
+                        totalAmountInput.value = '计算中...';
+                        
+                        try {
+                            // 计算未支付金额
+                            const unpaidAmount = await calculateUnpaidAmount(registrationId);
+                            
+                            // 更新总金额
+                            totalAmountInput.value = unpaidAmount.toFixed(2);
+                            totalAmountInput.disabled = false;
+                            
+                            if (unpaidAmount > 0) {
+                                if (window.utils && typeof window.utils.showToast === 'function') {
+                                    window.utils.showToast(`已自动汇总该挂号号下未支付金额：¥${unpaidAmount.toFixed(2)}`, 'info');
+                                }
+                            } else {
+                                if (window.utils && typeof window.utils.showToast === 'function') {
+                                    window.utils.showToast('该挂号号下暂无未支付账单', 'info');
+                                }
+                            }
+                        } catch (error) {
+                            console.error('计算未支付金额失败:', error);
+                            totalAmountInput.value = '0.00';
+                            totalAmountInput.disabled = false;
+                            if (window.utils && typeof window.utils.showToast === 'function') {
+                                window.utils.showToast('计算未支付金额失败，请手动输入', 'warning');
+                            }
+                        }
+                    } else if (totalAmountInput) {
+                        // 如果清空挂号号，重置总金额
+                        totalAmountInput.value = '0.00';
+                    }
+                });
+            }
+            
+            // 初始化挂号号选择框状态
+            if (window.updateRegistrationSelectForPayment) {
+                window.updateRegistrationSelectForPayment();
+            }
+        },
+        onSubmit: async (data) => {
+            try {
+                if (!data.patient_id) {
+                    utils.showToast('请选择患者', 'danger');
+                    return false;
+                }
+                if (!data.bill_type) {
+                    utils.showToast('请选择账单类型', 'danger');
+                    return false;
+                }
+                
+                // 验证：除挂号费外，必须关联挂号号
+                if (data.bill_type !== 'registration' && !data.registration_id) {
+                    utils.showToast('除挂号费外，所有账单必须关联挂号号', 'danger');
+                    return false;
+                }
+                
+                if (!data.total_amount || parseFloat(data.total_amount) <= 0) {
+                    utils.showToast('总金额必须大于0', 'danger');
+                    return false;
+                }
+                
+                const billData = {
+                    patient_id: data.patient_id,
+                    bill_type: data.bill_type,
+                    total_amount: parseFloat(data.total_amount),
+                    discount_amount: parseFloat(data.discount_amount || 0),
+                    insurance_amount: parseFloat(data.insurance_amount || 0)
+                };
+                
+                // 如果提供了挂号号，添加到请求数据中
+                if (data.registration_id) {
+                    billData.registration_id = data.registration_id;
+                }
+                
+                await PaymentAPI.createBill(billData);
+                utils.showToast('创建账单成功', 'success');
+                if (window.loadBills) {
+                    window.loadBills();
+                }
+                return true;
+            } catch (error) {
+                console.error('创建账单失败:', error);
+                let errorMsg = error.message || '创建账单失败';
+                if (error.response && error.response.data && error.response.data.message) {
+                    errorMsg = error.response.data.message;
+                }
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 选择患者（用于收费结算）（挂载到全局作用域）
+window.selectPatientForPayment = async function() {
+    const patient = await SelectorComponents.showPatientSelector({
+        title: '选择患者',
+        onSelect: async (selectedPatient) => {
+            if (!selectedPatient) {
+                utils.showToast('未选择患者', 'warning');
+                return;
+            }
+            
+            const patientId = selectedPatient.id;
+            const patientName = selectedPatient.name || '未知患者';
+            
+            // 设置隐藏的患者ID
+            const patientIdInput = document.getElementById('payment-patient-id');
+            if (patientIdInput) {
+                patientIdInput.value = patientId;
+            }
+            
+            // 设置显示的患者信息
+            const patientInput = document.getElementById('payment-patient-input');
+            if (patientInput) {
+                patientInput.value = patientName;
+            }
+            
+            // 加载该患者的挂号记录
+            if (window.loadPatientRegistrationsForPayment) {
+                await window.loadPatientRegistrationsForPayment(patientId);
+            }
+            
+            utils.showToast(`已选择患者：${patientName}`, 'success');
+        }
+    });
+}
+
+// 查看账单详情（挂载到全局作用域）
+window.viewBill = function(id) {
+    app.navigate(`payments/bill-detail?id=${id}`);
+};
+
+// 支付账单（挂载到全局作用域）
+window.payBill = async function(id) {
+    try {
+        // 先获取账单详情
+        const billResponse = await PaymentAPI.getBillDetail(id);
+        let bill = billResponse;
+        if (billResponse && billResponse.data) {
+            bill = billResponse.data;
+        }
+        
+        const totalAmount = parseFloat(bill.total_amount || 0);
+        const paidAmount = parseFloat(bill.paid_amount || 0);
+        const insuranceAmount = parseFloat(bill.insurance_amount || 0);
+        const payableAmount = totalAmount - paidAmount - insuranceAmount;
+        
+        if (payableAmount <= 0) {
+            utils.showToast('账单已全部支付', 'warning');
+            return;
+        }
+        
+        const formHtml = `
+            <div class="mb-3">
+                <label class="form-label">账单号</label>
+                <input type="text" class="form-control" value="${bill.bill_no || bill.id}" readonly>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">总金额</label>
+                <input type="text" class="form-control" value="¥${totalAmount.toFixed(2)}" readonly>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">已支付</label>
+                <input type="text" class="form-control" value="¥${paidAmount.toFixed(2)}" readonly>
+            </div>
+            ${insuranceAmount > 0 ? `
+            <div class="mb-3">
+                <label class="form-label">医保支付</label>
+                <input type="text" class="form-control" value="¥${insuranceAmount.toFixed(2)}" readonly>
+            </div>
+            ` : ''}
+            <div class="mb-3">
+                <label class="form-label">应付金额 <span class="text-danger">*</span></label>
+                <input type="number" class="form-control" id="pay-amount" name="amount" 
+                       value="${payableAmount.toFixed(2)}" min="0.01" max="${payableAmount.toFixed(2)}" 
+                       step="0.01" required>
+                <div class="form-text">最多可支付 ¥${payableAmount.toFixed(2)}</div>
+            </div>
+            ${FormComponents.createSelect({
+                id: 'payment-method',
+                label: '支付方式 <span class="text-danger">*</span>',
+                name: 'payment_method',
+                required: true,
+                options: [
+                    { value: 'cash', text: '现金支付' },
+                    { value: 'wechat', text: '微信支付' },
+                    { value: 'alipay', text: '支付宝支付' },
+                    { value: 'unionpay', text: '银联支付' },
+                    { value: 'medical_insurance', text: '医保支付' }
+                ]
+            })}
+            <div id="qrcode-container" class="text-center mb-3" style="display: none;">
+                <p class="text-muted">请使用手机扫描二维码支付</p>
+                <div id="qrcode-placeholder" class="border p-3 bg-light">
+                    <p class="text-muted">二维码加载中...</p>
+                </div>
+            </div>
+            <div id="unionpay-container" class="mb-3" style="display: none;">
+                <label class="form-label">交易流水号（可选）</label>
+                <input type="text" class="form-control" id="transaction-id" name="transaction_id" 
+                       placeholder="请输入银联交易流水号">
+            </div>
+        `;
+        
+        const result = await ModalComponents.showFormModal({
+            title: '支付账单',
+            formHtml: formHtml,
+            size: 'lg',
+            onSubmit: async (data) => {
+                try {
+                    const payAmount = parseFloat(data.amount);
+                    if (payAmount <= 0) {
+                        utils.showToast('支付金额必须大于0', 'danger');
+                        return false;
+                    }
+                    if (payAmount > payableAmount) {
+                        utils.showToast(`支付金额不能超过应付金额 ¥${payableAmount.toFixed(2)}`, 'danger');
+                        return false;
+                    }
+                    
+                    const paymentData = {
+                        payment_method: data.payment_method,
+                        amount: payAmount,
+                        transaction_id: data.transaction_id || null
+                    };
+                    
+                    await PaymentAPI.payBill(id, paymentData);
+                    utils.showToast('支付成功', 'success');
+                    if (window.loadBills) {
+                        window.loadBills();
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('支付失败:', error);
+                    let errorMsg = error.message || '支付失败';
+                    if (error.response && error.response.data && error.response.data.message) {
+                        errorMsg = error.response.data.message;
+                    }
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+        
+        // 监听支付方式变化
+        setTimeout(() => {
+            const paymentMethodSelect = document.getElementById('payment-method');
+            const qrcodeContainer = document.getElementById('qrcode-container');
+            const unionpayContainer = document.getElementById('unionpay-container');
+            
+            if (paymentMethodSelect) {
+                paymentMethodSelect.addEventListener('change', (e) => {
+                    const method = e.target.value;
+                    if (method === 'wechat' || method === 'alipay') {
+                        qrcodeContainer.style.display = 'block';
+                        unionpayContainer.style.display = 'none';
+                        // TODO: 调用后端API生成支付二维码
+                        // 这里先显示占位符
+                    } else if (method === 'unionpay') {
+                        qrcodeContainer.style.display = 'none';
+                        unionpayContainer.style.display = 'block';
+                    } else {
+                        qrcodeContainer.style.display = 'none';
+                        unionpayContainer.style.display = 'none';
+                    }
+                });
+            }
+        }, 100);
+    } catch (error) {
+        console.error('加载账单信息失败:', error);
+        utils.showToast('加载账单信息失败', 'danger');
+    }
+}
+
+// 退费（挂载到全局作用域）
+window.refundBill = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认退费',
+        message: '确定要退费吗？',
+        confirmText: '确认退费',
+        confirmType: 'danger'
+    });
+    
+    if (confirmed) {
+        try {
+            await PaymentAPI.refund(id, { refund_amount: 0, reason: '用户申请退费' });
+            utils.showToast('退费成功', 'success');
+            if (window.loadBills) {
+                window.loadBills();
+            }
+        } catch (error) {
+            console.error('退费失败:', error);
+            const errorMsg = error.message || '退费失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+</script>
+

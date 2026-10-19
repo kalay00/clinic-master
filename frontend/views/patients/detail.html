@@ -1,0 +1,243 @@
+<!-- 患者详情页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('patients')">患者管理</a></li>
+            <li class="breadcrumb-item active">患者详情</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-person"></i> 患者详情</h1>
+        <div>
+            <button type="button" class="btn btn-success" onclick="window.editPatient()">
+                <i class="bi bi-pencil"></i> 编辑
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="if(window.app && window.app.navigate) { window.app.navigate('patients'); } else { window.location.href='/views/patients/list.html'; }">
+                <i class="bi bi-arrow-left"></i> 返回
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="patient-detail-container"></div>
+
+<script>
+let patientId = null;
+
+window.pageInit = function() {
+    // 从URL获取患者ID（支持hash路由和直接URL）
+    let urlParams;
+    if (window.location.hash && window.location.hash.includes('?')) {
+        // 从hash中获取查询参数
+        const hashQuery = window.location.hash.split('?')[1];
+        urlParams = new URLSearchParams(hashQuery);
+    } else {
+        // 从URL search中获取查询参数
+        urlParams = new URLSearchParams(window.location.search);
+    }
+    
+    patientId = urlParams.get('id');
+    
+    if (!patientId) {
+        const container = document.getElementById('patient-detail-container');
+        if (container) {
+            container.innerHTML = '<div class="alert alert-danger">患者ID不存在</div>';
+        }
+        return;
+    }
+    
+    // 确保容器存在后再加载
+    setTimeout(() => {
+        if (window.loadPatientDetail) {
+            window.loadPatientDetail();
+        }
+    }, 50);
+};
+
+// 加载患者详情（挂载到全局作用域）
+window.loadPatientDetail = async function() {
+    const container = document.getElementById('patient-detail-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API获取患者详情
+        const patient = await PatientAPI.getDetail(patientId);
+        
+        // 获取就诊历史（如果API存在）
+        let visits = [];
+        try {
+            const visitsResponse = await PatientAPI.getVisits(patientId);
+            visits = visitsResponse.items || visitsResponse || [];
+        } catch (e) {
+            console.warn('获取就诊历史失败:', e);
+            visits = [];
+        }
+        
+        // 适配后端返回的字段名
+        if (!patient.id) patient.id = patientId;
+        
+        container.innerHTML = `
+            <!-- 基本信息 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person-badge"></i> 基本信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">病历号</label>
+                            <div class="fw-bold">${patient.patient_no || patient.medical_record_no || '-'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">姓名</label>
+                            <div class="fw-bold">${patient.name || '-'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">性别</label>
+                            <div class="fw-bold">${patient.gender === 'male' ? '男' : patient.gender === 'female' ? '女' : patient.gender === 'other' ? '其他' : '-'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">年龄</label>
+                            <div class="fw-bold">${patient.age || window.calculateAge(patient.birthday || patient.birth_date) || '-'}${patient.age ? '岁' : ''}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">出生日期</label>
+                            <div class="fw-bold">${patient.birthday || patient.birth_date || '-'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">联系电话</label>
+                            <div class="fw-bold">${patient.phone || '-'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">身份证号</label>
+                            <div class="fw-bold">${patient.id_card || '-'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">地址</label>
+                            <div class="fw-bold">${patient.address || '未填写'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 紧急联系人 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-telephone"></i> 紧急联系人</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">联系人姓名</label>
+                            <div class="fw-bold">${patient.emergency_contact || '未填写'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">联系人电话</label>
+                            <div class="fw-bold">${patient.emergency_phone || '未填写'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 病史信息 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-heart-pulse"></i> 病史信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">过敏史</label>
+                            <div>${patient.allergy_history || '无'}</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label text-muted">慢性病史</label>
+                            <div>${patient.chronic_disease || '无'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 就诊历史 -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> 就诊历史</h5>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="app.navigate('registrations')">
+                        <i class="bi bi-plus-circle"></i> 新增挂号
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>就诊时间</th>
+                                    <th>医生</th>
+                                    <th>科室</th>
+                                    <th>诊断</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${visits.length > 0 ? visits.map(visit => `
+                                    <tr>
+                                        <td>${visit.visit_date || visit.created_at || '-'}</td>
+                                        <td>${visit.doctor_name || visit.doctor?.name || '-'}</td>
+                                        <td>${visit.department || visit.department_name || '-'}</td>
+                                        <td>${visit.diagnosis || visit.western_diagnosis || visit.tcm_syndrome || '-'}</td>
+                                        <td><span class="badge bg-success">已完成</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="viewVisit('${visit.id || visit.medical_record_id}')">
+                                                <i class="bi bi-eye"></i> 查看
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="6" class="text-center text-muted">暂无就诊记录</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('加载患者详情失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载患者详情失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 编辑患者（挂载到全局作用域）
+window.editPatient = function() {
+    // 使用SPA路由导航
+    if (window.app && window.app.navigate) {
+        window.app.navigate(`patients/edit?id=${patientId}`);
+    } else {
+        // 降级方案：直接跳转
+        window.location.href = `/views/patients/edit.html?id=${patientId}`;
+    }
+};
+
+// 计算年龄（挂载到全局作用域）
+window.calculateAge = function(birthday) {
+    if (!birthday) return null;
+    const birth = new Date(birthday);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+    }
+    return age;
+}
+
+// 查看就诊记录（挂载到全局作用域）
+window.viewVisit = function(visitId) {
+    window.location.href = `/views/treatments/detail.html?visit_id=${visitId}`;
+};
+</script>
+

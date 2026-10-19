@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>平台管理员登录 - 门诊诊所管理系统</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- 自定义CSS -->
+    <link href="/css/main.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            max-width: 450px;
+            width: 100%;
+            padding: 2rem;
+        }
+        .login-card {
+            background: #fff;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 2.5rem;
+        }
+        .login-logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-logo i {
+            font-size: 3rem;
+            color: var(--primary-color);
+        }
+        .login-logo h2 {
+            margin-top: 1rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+        .platform-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">
+                <i class="bi bi-shield-lock"></i>
+                <h2>平台管理员</h2>
+                <span class="platform-badge">Platform Admin</span>
+            </div>
+            
+            <form id="platformLoginForm">
+                <div class="mb-3">
+                    <label for="username" class="form-label">
+                        <i class="bi bi-person"></i> 用户名
+                    </label>
+                    <input type="text" class="form-control" id="username" name="username" required autofocus>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="password" class="form-label">
+                        <i class="bi bi-lock"></i> 密码
+                    </label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                </div>
+                
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="rememberMe">
+                    <label class="form-check-label" for="rememberMe">
+                        记住我
+                    </label>
+                </div>
+                
+                <div id="errorMessage" class="alert alert-danger d-none" role="alert"></div>
+                
+                <button type="submit" class="btn btn-primary w-100 mb-3">
+                    <i class="bi bi-box-arrow-in-right"></i> 登录
+                </button>
+                
+                <div class="text-center">
+                    <a href="/login.html" class="text-muted text-decoration-none">
+                        <i class="bi bi-arrow-left"></i> 返回普通用户登录
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- API客户端 -->
+    <script src="/js/api.js"></script>
+    <script>
+        // 检查是否已登录
+        const token = localStorage.getItem('his_token');
+        const user = JSON.parse(localStorage.getItem('his_user') || '{}');
+        
+        // 如果已登录且是平台管理员，跳转到平台管理页面
+        if (token && user.role === 'platform_admin') {
+            window.location.href = '/views/platform/dashboard.html';
+        }
+        
+        // 登录表单提交
+        document.getElementById('platformLoginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMessage');
+            
+            // 隐藏错误信息
+            errorDiv.classList.add('d-none');
+            
+            // 显示加载状态
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>登录中...';
+            
+            try {
+                // 调用平台管理员登录API
+                const response = await fetch('/api/v1/platform/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.code === 200) {
+                    // 登录成功，保存token和用户信息
+                    const result = data.data;
+                    
+                    // 保存access_token
+                    if (result.access_token) {
+                        localStorage.setItem('his_token', result.access_token);
+                    }
+                    
+                    // 保存refresh_token
+                    if (result.refresh_token) {
+                        localStorage.setItem('his_refresh_token', result.refresh_token);
+                    }
+                    
+                    // 保存用户信息
+                    if (result.user) {
+                        localStorage.setItem('his_user', JSON.stringify(result.user));
+                    }
+                    
+                    // 跳转到平台管理主页
+                    window.location.href = '/views/platform/dashboard.html';
+                } else {
+                    // 显示错误信息
+                    errorDiv.textContent = data.msg || data.message || '登录失败，请检查用户名和密码';
+                    errorDiv.classList.remove('d-none');
+                }
+            } catch (error) {
+                console.error('登录错误:', error);
+                errorDiv.textContent = '网络错误，请稍后重试';
+                errorDiv.classList.remove('d-none');
+            } finally {
+                // 恢复按钮状态
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+        });
+    </script>
+</body>
+</html>
+

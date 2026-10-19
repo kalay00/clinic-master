@@ -1,0 +1,4 @@
+Generic single-database configuration with a migrations folder.
+
+This is a minimal Alembic setup for a single database.
+

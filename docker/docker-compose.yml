@@ -1,0 +1,194 @@
+services:
+  # PostgreSQL 主数据库
+  his-postgres:
+    image: postgres:17.5
+    container_name: his-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-his_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-his_password}
+      POSTGRES_DB: ${POSTGRES_DB:-his_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-his_user} -d ${POSTGRES_DB:-his_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # RabbitMQ 消息队列
+  his-rabbitmq:
+    image: docker.io/rabbitmq:3-management-alpine
+    container_name: his-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-his_mq_user}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-his_mq_password}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"      # AMQP端口
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"  # 管理界面端口
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 应用服务（可选，如果应用也在Docker中运行）
+  his-redis:
+    container_name: his-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    platform: linux/amd64
+    environment:
+      TZ: "Asia/Shanghai"
+      ENVIRONMENT: dev
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?错误: 请设置 REDIS_PASSWORD 环境变量}
+      --appendonly yes
+      --appendfsync everysec
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+    healthcheck:
+      test:
+        [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
+
+  # ==================== 后端服务 ====================
+  his-backend:
+    container_name: his-backend
+    # 强制以 amd64 构建：asyncmy 无 linux/arm64 预编译 wheel，arm64 下会回退源码编译（需 Cython）而失败
+    platform: linux/amd64
+    build:
+      context: ../
+      dockerfile: ./docker/backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+      ENVIRONMENT: dev
+      # 指向 compose 中的服务名（config.py 默认 localhost，在容器内需覆盖）
+      POSTGRES_HOST: his-postgres
+      REDIS_HOST: his-redis
+      POSTGRES_USER: ${POSTGRES_USER:-his_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-his_password}
+      POSTGRES_DB: ${POSTGRES_DB:-his_db}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+    ports:
+      - "${BACKEND_PORT:-9000}:9000"
+    # 挂载宿主机代码到容器（热更新，生产环境保留以便读取 .env.prod 等配置文件）
+    volumes:
+      - ../backend:/backend
+      # 前端静态页面：挂到容器内 /frontend，由 main.py 的 StaticFiles 托管（/ 根路径）
+      - ../frontend:/frontend
+      # 上传目录使用命名卷：容器以非 root 用户运行，写宿主机 bind mount 常报权限错；
+      # 命名卷持久化且初始属主为 hisuser，可正常读写
+      - uploads_data:/backend/uploads
+    depends_on:
+      his-postgres:
+        condition: service_healthy
+      his-redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:9000/health\")' || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+        reservations:
+          memory: 256m
+
+  # ==================== 桌面端 Web 版 ====================
+
+  his-desktop-dev:
+    container_name: his-desktop-dev
+    build:
+      context: ../
+      dockerfile: ./docker/desktop/Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    environment:
+      # 浏览器侧 API 地址（后端容器已映射到宿主机 9000，CORS=* 可直接跨域）
+      - VITE_API_BASE_URL=http://localhost:9000/api/v1
+      # 跳过 Electron 二进制下载
+      - ELECTRON_SKIP_BINARY_DOWNLOAD=1
+      # Docker for Mac 下 bind mount 无法触发 inotify，需开启轮询以实现 HMR
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      # 挂载源码，改文件即时热更新
+      - ../desktop:/app
+      # node_modules 用匿名卷保存，避免被宿主机（可能不完整的）node_modules 覆盖
+      - /app/node_modules
+    depends_on:
+      his-backend:
+        condition: service_healthy
+
+
+  # 多阶段构建：vite build 打包 SPA -> nginx 托管并反向代理 /api 到后端
+  his-desktop:
+    container_name: his-desktop
+    build:
+      context: ../
+      dockerfile: ./docker/desktop/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_USE_MOCK: "false"
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      his-backend:
+        condition: service_healthy
+
+
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  uploads_data:
+    driver: local

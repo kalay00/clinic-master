@@ -1,0 +1,497 @@
+/**
+ * 门诊诊所管理系统 - 主样式文件
+ * 基于Bootstrap 5定制
+ */
+
+:root {
+    /* 主色调 */
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #0dcaf0;
+    
+    /* 医疗行业特色色 */
+    --medical-blue: #007bff;
+    --tcm-green: #28a745;  /* 中医绿 */
+    --western-blue: #17a2b8;  /* 西医蓝 */
+    
+    /* 中性色 */
+    --bg-light: #f8f9fa;
+    --text-dark: #212529;
+    --border-light: #dee2e6;
+    
+    /* 侧边栏宽度 */
+    --sidebar-width: 250px;
+    --sidebar-collapsed-width: 80px;
+}
+
+/* 全局样式 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-dark);
+    margin: 0;
+    padding: 0;
+}
+
+/* 确保页面内容区域可见 */
+#app {
+    background-color: var(--bg-light);
+    min-height: 100vh;
+}
+
+#page-content {
+    background-color: transparent;
+    min-height: 100%;
+}
+
+/* 布局容器 */
+.app-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* Header样式 */
+.app-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background-color: #fff;
+    border-bottom: 1px solid var(--border-light);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.app-header .logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-right: 1rem;
+}
+
+.app-header .user-info {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* 侧边栏切换按钮样式 */
+.sidebar-toggle {
+    padding: 0.5rem;
+    font-size: 1.5rem;
+    color: var(--text-dark);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.sidebar-toggle:hover {
+    color: var(--primary-color);
+}
+
+.sidebar-toggle:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+/* Sidebar样式 */
+.app-sidebar {
+    position: fixed;
+    left: 0;
+    top: 60px;
+    width: var(--sidebar-width);
+    height: calc(100vh - 60px);
+    background-color: #fff;
+    border-right: 1px solid var(--border-light);
+    overflow-y: auto;
+    transition: width 0.3s;
+    z-index: 999;
+}
+
+.app-sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
+}
+
+.app-sidebar .menu-item {
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-dark);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all 0.3s;
+}
+
+/* 菜单组样式 */
+.menu-group {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.menu-group-title {
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.menu-group .submenu-item {
+    padding-left: 2rem;
+    font-size: 0.9rem;
+}
+
+.app-sidebar .menu-item:hover {
+    background-color: var(--bg-light);
+    border-left-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.app-sidebar .menu-item.active {
+    background-color: rgba(13, 110, 253, 0.1);
+    border-left-color: var(--primary-color);
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+.app-sidebar .menu-item i {
+    font-size: 1.25rem;
+    width: 24px;
+    text-align: center;
+}
+
+.app-sidebar.collapsed .menu-item span {
+    display: none;
+}
+
+.app-sidebar.collapsed .menu-item i {
+    margin: 0 auto;
+}
+
+/* 主内容区 */
+.app-main {
+    margin-left: var(--sidebar-width);
+    margin-top: 60px;
+    padding: 1.5rem;
+    min-height: calc(100vh - 60px);
+    transition: margin-left 0.3s;
+    background-color: var(--bg-light);
+    color: var(--text-dark);
+}
+
+.app-sidebar.collapsed ~ .app-main {
+    margin-left: var(--sidebar-collapsed-width);
+}
+
+/* 响应式：移动端 */
+@media (max-width: 768px) {
+    .app-sidebar {
+        transform: translateX(-100%);
+        width: var(--sidebar-width);
+        transition: transform 0.3s ease-in-out;
+    }
+    
+    .app-sidebar.show {
+        transform: translateX(0);
+    }
+    
+    .app-main {
+        margin-left: 0;
+    }
+    
+    .app-sidebar.collapsed ~ .app-main {
+        margin-left: 0;
+    }
+}
+
+/* 页面标题 */
+.page-header {
+    margin-bottom: 1.5rem;
+}
+
+.page-header h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+/* 卡片样式 */
+.card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid var(--border-light);
+    font-weight: 600;
+    padding: 1rem 1.25rem;
+}
+
+/* 表格样式 */
+.table {
+    background-color: #fff;
+}
+
+.table thead th {
+    background-color: var(--bg-light);
+    border-bottom: 2px solid var(--border-light);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* 按钮样式 */
+.btn {
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+/* 表单样式 */
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--text-dark);
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* 加载动画 */
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(13, 110, 253, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--primary-color);
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 空状态 */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Toast通知样式 */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 1055;
+}
+
+/* 中医特色标识 */
+.tcm-badge {
+    background-color: var(--tcm-green);
+    color: #fff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* 西医特色标识 */
+.western-badge {
+    background-color: var(--western-blue);
+    color: #fff;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* 响应式表格 */
+.table-responsive {
+    border-radius: 0.375rem;
+}
+
+/* 分页样式 */
+.pagination {
+    margin-top: 1rem;
+}
+
+/* 面包屑导航 */
+.breadcrumb {
+    background-color: transparent;
+    padding: 0;
+    margin-bottom: 1rem;
+}
+
+.breadcrumb-item a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.breadcrumb-item.active {
+    color: var(--text-dark);
+}
+
+/* 统计卡片 */
+.stat-card {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #0b5ed7 100%);
+    color: #fff;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.stat-card.success {
+    background: linear-gradient(135deg, var(--success-color) 0%, #157347 100%);
+}
+
+.stat-card.warning {
+    background: linear-gradient(135deg, var(--warning-color) 0%, #ffca2c 100%);
+}
+
+.stat-card.danger {
+    background: linear-gradient(135deg, var(--danger-color) 0%, #bb2d3b 100%);
+}
+
+.stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card .stat-label {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+/* 加载遮罩 */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.loading-content {
+    text-align: center;
+}
+
+/* 搜索栏样式 */
+.search-bar {
+    background-color: #fff;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    margin-bottom: 1.5rem;
+}
+
+/* 操作按钮组 */
+.action-buttons {
+    margin-bottom: 1rem;
+}
+
+.action-buttons .btn {
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* 表单验证样式 */
+.was-validated .form-control:invalid,
+.was-validated .form-select:invalid {
+    border-color: var(--danger-color);
+}
+
+.was-validated .form-control:valid,
+.was-validated .form-select:valid {
+    border-color: var(--success-color);
+}
+
+/* 状态标签 */
+.status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-completed {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+.status-cancelled {
+    background-color: #f8d7da;
+    color: #842029;
+}
+
+/* 打印样式 */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    .app-sidebar,
+    .app-header,
+    .btn,
+    .pagination {
+        display: none !important;
+    }
+    
+    .app-main {
+        margin: 0;
+        padding: 0;
+    }
+}
+

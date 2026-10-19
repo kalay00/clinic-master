@@ -1,0 +1,876 @@
+<!-- 挂号管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">挂号管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-calendar-check"></i> 挂号管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-primary" onclick="showAddRegistrationModal()">
+        <i class="bi bi-plus-circle"></i> 新增挂号
+    </button>
+    <button type="button" class="btn btn-success" onclick="app.navigate('schedules')">
+        <i class="bi bi-calendar3"></i> 排班管理
+    </button>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 挂号列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">挂号列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="registrations-table-container"></div>
+        <div id="registrations-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+// 挂载到全局作用域
+window.pageInit = function() {
+    window.initSearchBar();
+    window.loadRegistrations();
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'registration-search',
+        placeholder: '请输入患者姓名、病历号或挂号号搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            if (window.loadRegistrations) {
+                window.loadRegistrations();
+            }
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'status-filter',
+                label: '状态',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'pending', text: '待就诊' },
+                    { value: 'completed', text: '已完成' },
+                    { value: 'cancelled', text: '已取消' }
+                ]
+            }
+        ]
+    });
+}
+
+// 加载挂号列表（挂载到全局作用域）
+window.loadRegistrations = async function() {
+    const container = document.getElementById('registrations-table-container');
+    if (!container) {
+        console.warn('registrations-table-container元素未找到，跳过加载');
+        return;
+    }
+    
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API
+        const response = await RegistrationAPI.getList({
+            page: currentPage,
+            page_size: pageSize,
+            keyword: searchKeyword
+        });
+        console.log("挂号列表", response)
+        
+        // 处理后端响应格式 {code, message, data: {items: [], pagination: {total, page, page_size, pages}}}
+        let mockData = {
+            items: [],
+            total: 0,
+            page: currentPage,
+            page_size: pageSize,
+            total_pages: 0
+        };
+        
+        if (response && response.data) {
+            // 标准响应格式 {code, message, data: {items, pagination}}
+            if (response.data.items) {
+                mockData.items = response.data.items;
+            }
+            if (response.data.pagination) {
+                mockData.total = response.data.pagination.total || 0;
+                mockData.page = response.data.pagination.page || currentPage;
+                mockData.page_size = response.data.pagination.page_size || pageSize;
+                mockData.total_pages = response.data.pagination.pages || 0;
+            }
+        } else if (response && response.items) {
+            // 直接返回items数组
+            mockData.items = response.items;
+            if (response.pagination) {
+                mockData.total = response.pagination.total || 0;
+                mockData.page = response.pagination.page || currentPage;
+                mockData.page_size = response.pagination.page_size || pageSize;
+                mockData.total_pages = response.pagination.pages || 0;
+            }
+        } else if (Array.isArray(response)) {
+            // 直接是数组
+            mockData.items = response;
+            mockData.total = response.length;
+        }
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'registrations-table',
+            columns: [
+                {
+                    title: '挂号号',
+                    key: 'registration_no',
+                    align: 'center'
+                },
+                {
+                    title: '患者姓名',
+                    key: 'patient_name',
+                    align: 'center'
+                },
+                {
+                    title: '医生',
+                    key: 'doctor_name',
+                    align: 'center'
+                },
+                {
+                    title: '科室',
+                    key: 'department_name',
+                    align: 'center'
+                },
+                {
+                    title: '预约时间',
+                    key: 'appointment_time',
+                    align: 'center'
+                },
+                {
+                    title: '挂号费',
+                    key: 'price',
+                    align: 'right',
+                    render: (row) => {
+                        const price = row.price || 0;
+                        return `<span class="fw-bold text-primary">¥${price.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: '支付状态',
+                    key: 'payment_status',
+                    align: 'center',
+                    render: (row) => {
+                        const statusMap = {
+                            'paid': { text: '已缴费', class: 'success' },
+                            'unpaid': { text: '未交费', class: 'warning' },
+                            'cancelled': { text: '取消', class: 'danger' },
+                            'refunded': { text: '退费', class: 'secondary' }
+                        };
+                        const statusValue = row.payment_status || 'unpaid';
+                        const status = statusMap[statusValue] || { text: statusValue, class: 'secondary' };
+                        return `<span class="badge bg-${status.class}">${status.text}</span>`;
+                    }
+                },
+                {
+                    title: '状态',
+                    key: 'status',
+                    align: 'center',
+                    render: (row) => {
+                        const statusMap = {
+                            'pending': { text: '待就诊', class: 'warning' },
+                            'completed': { text: '已完成', class: 'success' },
+                            'cancelled': { text: '已取消', class: 'danger' },
+                            'cancelled': { text: '已取消', class: 'danger' }
+                        };
+                        const statusValue = row.status || row.registration_status || 'pending';
+                        const status = statusMap[statusValue] || { text: statusValue, class: 'secondary' };
+                        return `<span class="badge bg-${status.class}">${status.text}</span>`;
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    width: '200px',
+                    render: (row) => {
+                        const statusValue = row.status || row.registration_status || 'pending';
+                        let html = `<button class="btn btn-sm btn-outline-primary" onclick="if(window.viewRegistration) window.viewRegistration('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>`;
+                        if (statusValue === 'pending') {
+                            html += `<button class="btn btn-sm btn-outline-danger ms-1" onclick="if(window.cancelRegistration) window.cancelRegistration('${row.id}')">
+                                <i class="bi bi-x-circle"></i> 取消
+                            </button>`;
+                        }
+                        return html;
+                    }
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无挂号数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('registrations-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    if (window.loadRegistrations) {
+                        window.loadRegistrations();
+                    }
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载挂号列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载挂号列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示新增挂号弹窗（挂载到全局作用域）
+window.showAddRegistrationModal = async function() {
+    let selectedPatient = null;
+    
+    // 加载科室和医生列表
+    let departmentOptions = [{ value: '', text: '请选择科室' }];
+    let doctorOptions = [{ value: '', text: '请先选择科室' }];
+    
+    try {
+        // 加载科室列表
+        const deptsResponse = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+        const departments = deptsResponse.items || deptsResponse || [];
+        departmentOptions = [
+            { value: '', text: '请选择科室' },
+            ...departments.map(dept => ({ 
+                value: dept.id, 
+                text: dept.name || dept.code || '未知科室' 
+            }))
+        ];
+    } catch (e) {
+        console.error('加载科室列表失败:', e);
+        utils.showToast('加载科室列表失败', 'warning');
+    }
+    
+    const formHtml = `
+        <div class="mb-3">
+            <label class="form-label">患者 <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <input type="text" class="form-control" id="registration-patient-input" 
+                       placeholder="请选择患者" 
+                       value="${selectedPatient ? selectedPatient.name : ''}" 
+                       readonly required>
+                <input type="hidden" id="registration-patient-id" name="patient_id">
+                <button class="btn btn-outline-primary" type="button" onclick="selectPatientForRegistration()">
+                    <i class="bi bi-search"></i> 选择患者
+                </button>
+            </div>
+        </div>
+        ${FormComponents.createSelect({
+            id: 'department-select',
+            label: '科室',
+            name: 'department_id',
+            required: true,
+            options: departmentOptions,
+            onChange: 'loadDoctorsForRegistration()'
+        })}
+        ${FormComponents.createSelect({
+            id: 'doctor-select',
+            label: '医生',
+            name: 'doctor_id',
+            required: true,
+            options: doctorOptions,
+            onChange: 'loadScheduleFee()'
+        })}
+        ${FormComponents.createDatePicker({
+            id: 'registration-date',
+            label: '挂号日期',
+            name: 'registration_date',
+            required: true,
+            onChange: 'loadScheduleFee()'
+        })}
+        <div id="schedule-fee-display" class="mb-3" style="display: none;">
+            <label class="form-label">挂号费</label>
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i> 
+                <span id="schedule-fee-text">请选择医生和日期后查看挂号费</span>
+            </div>
+        </div>
+        ${FormComponents.createSelect({
+            id: 'time-slot-select',
+            label: '时间段',
+            name: 'time_slot',
+            required: false,
+            options: [
+                { value: '', text: '不指定' },
+                { value: '09:00', text: '09:00-10:00' },
+                { value: '10:00', text: '10:00-11:00' },
+                { value: '14:00', text: '14:00-15:00' },
+                { value: '15:00', text: '15:00-16:00' }
+            ],
+            onChange: 'loadAvailableQuota()'
+        })}
+        <div id="available-quota-display" class="mb-3" style="display: none;">
+            <label class="form-label">剩余号源数</label>
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i> 
+                <span id="available-quota-text">请选择时间段后查看剩余号源数</span>
+            </div>
+        </div>
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '新增挂号',
+        formHtml: formHtml,
+        size: 'lg',
+        onShow: (modalElement) => {
+            // 绑定时间段选择器的change事件
+            setTimeout(() => {
+                const timeSlotSelect = document.getElementById('time-slot-select');
+                if (timeSlotSelect) {
+                    console.log('loadAvailableQuota: 绑定时间段选择器change事件');
+                    // 直接添加事件监听器（不克隆，保留原有的onchange属性）
+                    timeSlotSelect.addEventListener('change', async () => {
+                        console.log('loadAvailableQuota: 时间段选择器change事件触发');
+                        await window.loadAvailableQuota();
+                    });
+                } else {
+                    console.warn('loadAvailableQuota: 时间段选择器未找到');
+                }
+            }, 100);
+        },
+        onSubmit: async (data) => {
+            try {
+                // 确保必填字段存在
+                if (!data.patient_id) {
+                    utils.showToast('请选择患者', 'danger');
+                    return false;
+                }
+                if (!data.registration_date) {
+                    utils.showToast('请选择挂号日期', 'danger');
+                    return false;
+                }
+                if (!data.doctor_id) {
+                    utils.showToast('请选择医生', 'danger');
+                    return false;
+                }
+                if (!data.department_id) {
+                    utils.showToast('请选择科室', 'danger');
+                    return false;
+                }
+                
+                // 验证UUID格式（简单的UUID格式检查）
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                if (data.doctor_id && !uuidRegex.test(data.doctor_id)) {
+                    utils.showToast('医生ID格式错误，请重新选择医生', 'danger');
+                    return false;
+                }
+                if (data.department_id && !uuidRegex.test(data.department_id)) {
+                    utils.showToast('科室ID格式错误，请重新选择科室', 'danger');
+                    return false;
+                }
+                
+                // 转换数据格式，确保字段名匹配后端API
+                const registrationData = {
+                    patient_id: data.patient_id,
+                    registration_date: data.registration_date,
+                    doctor_id: data.doctor_id || null,
+                    department_id: data.department_id || null,
+                    registration_type: 'onsite', // 默认现场挂号
+                    // price 会从排班中自动获取，不需要手动设置
+                };
+                
+                // 如果选择了时间段，尝试查找对应的排班
+                if (data.time_slot) {
+                    // TODO: 可以根据时间段查找对应的排班ID
+                }
+                
+                await RegistrationAPI.create(registrationData);
+                utils.showToast('新增挂号成功', 'success');
+                if (window.loadRegistrations) {
+                    window.loadRegistrations();
+                }
+                return true;
+            } catch (error) {
+                console.error('新增挂号失败:', error);
+                // 显示详细错误信息（422错误会包含验证详情）
+                let errorMsg = error.message || '新增挂号失败';
+                if (error.response && error.response.data && error.response.data.data && error.response.data.data.details) {
+                    const details = error.response.data.data.details.errors || [];
+                    if (details.length > 0) {
+                        const detailMsg = details.map(e => {
+                            const field = e.loc ? e.loc.slice(1).join('.') : '未知字段';
+                            return `${field}: ${e.msg}`;
+                        }).join('; ');
+                        errorMsg = `${errorMsg}\n${detailMsg}`;
+                    }
+                }
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 查看挂号详情（挂载到全局作用域）
+window.viewRegistration = async function(id) {
+    try {
+        const registration = await RegistrationAPI.getDetail(id);
+        
+        // 处理后端响应格式
+        let reg = registration;
+        if (registration && registration.data) {
+            reg = registration.data;
+        }
+        
+        const modalHtml = `
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">挂号号</label>
+                    <div class="fw-bold">${reg.registration_no || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">患者姓名</label>
+                    <div class="fw-bold">${reg.patient_name || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">医生</label>
+                    <div class="fw-bold">${reg.doctor_name || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">科室</label>
+                    <div class="fw-bold">${reg.department_name || reg.department || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">挂号日期</label>
+                    <div class="fw-bold">${reg.registration_date || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">预约时间</label>
+                    <div class="fw-bold">${reg.appointment_time || reg.registration_date || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">挂号类型</label>
+                    <div class="fw-bold">
+                        ${reg.registration_type === 'onsite' ? '现场挂号' : 
+                          reg.registration_type === 'appointment' ? '预约挂号' : 
+                          reg.registration_type === 'wechat' ? '微信挂号' : 
+                          reg.registration_type || '-'}
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">状态</label>
+                    <div>
+                        <span class="badge bg-${
+                            reg.status === 'pending' ? 'warning' : 
+                            reg.status === 'completed' ? 'success' : 
+                            reg.status === 'cancelled' ? 'danger' : 'secondary'
+                        }">
+                            ${reg.status === 'pending' ? '待就诊' : 
+                              reg.status === 'completed' ? '已完成' : 
+                              reg.status === 'cancelled' ? '已取消' : 
+                              reg.status || '-'}
+                        </span>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">挂号费</label>
+                    <div class="fw-bold">¥${(reg.price || 0).toFixed(2)}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">支付状态</label>
+                    <div>
+                        <span class="badge bg-${
+                            reg.payment_status === 'paid' ? 'success' : 
+                            reg.payment_status === 'unpaid' ? 'warning' : 
+                            'secondary'
+                        }">
+                            ${reg.payment_status === 'paid' ? '已支付' : 
+                              reg.payment_status === 'unpaid' ? '未支付' : 
+                              reg.payment_status || '-'}
+                        </span>
+                    </div>
+                </div>
+                ${reg.remark ? `
+                <div class="col-12 mb-3">
+                    <label class="form-label text-muted">备注</label>
+                    <div>${reg.remark}</div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+        
+        await ModalComponents.showInfoModal({
+            title: '挂号详情',
+            content: modalHtml,
+            size: 'lg'
+        });
+    } catch (error) {
+        console.error('查看挂号详情失败:', error);
+        utils.showToast('查看挂号详情失败', 'danger');
+    }
+};
+
+// 选择患者（用于挂号）（挂载到全局作用域）
+window.selectPatientForRegistration = async function() {
+    const patient = await SelectorComponents.showPatientSelector({
+        title: '选择患者',
+        onSelect: (selectedPatient) => {
+            if (!selectedPatient) {
+                utils.showToast('未选择患者', 'warning');
+                return;
+            }
+            
+            // 统一字段名：支持patient_no和medical_record_no
+            // 后端返回的是patient_no，前端可能使用medical_record_no
+            const recordNo = selectedPatient.medical_record_no || 
+                            selectedPatient.patient_no || 
+                            selectedPatient.record_no || 
+                            '-';
+            
+            const patientId = selectedPatient.id;
+            const patientName = selectedPatient.name || '未知患者';
+            
+            // 设置隐藏的患者ID
+            const patientIdInput = document.getElementById('registration-patient-id');
+            if (patientIdInput) {
+                patientIdInput.value = patientId;
+            }
+            
+            // 设置显示的患者信息
+            const patientInput = document.getElementById('registration-patient-input');
+            if (patientInput) {
+                patientInput.value = `${patientName} (${recordNo})`;
+            }
+            
+            utils.showToast(`已选择患者：${patientName}`, 'success');
+        }
+    });
+}
+
+// 加载医生列表（根据选择的科室）（挂载到全局作用域）
+window.loadDoctorsForRegistration = async function() {
+    const departmentId = document.getElementById('department-select')?.value;
+    const doctorSelect = document.getElementById('doctor-select');
+    
+    if (!doctorSelect) return;
+    
+    // 清空医生选项
+    doctorSelect.innerHTML = '<option value="">请先选择科室</option>';
+    
+    if (!departmentId) {
+        return;
+    }
+    
+    try {
+        // 加载该科室的医生列表
+        const doctorsResponse = await DoctorAPI.getList({ 
+            page: 1, 
+            page_size: 100,
+            department_id: departmentId
+        });
+        const doctors = doctorsResponse.items || doctorsResponse || [];
+        
+        // 更新医生选项
+        doctorSelect.innerHTML = '<option value="">请选择医生</option>';
+        doctors.forEach(doctor => {
+            const option = document.createElement('option');
+            option.value = doctor.id;
+            option.textContent = doctor.name || doctor.employee_no || '未知医生';
+            doctorSelect.appendChild(option);
+        });
+        
+        if (doctors.length === 0) {
+            doctorSelect.innerHTML = '<option value="">该科室暂无医生</option>';
+        }
+    } catch (e) {
+        console.error('加载医生列表失败:', e);
+        utils.showToast('加载医生列表失败', 'warning');
+        doctorSelect.innerHTML = '<option value="">加载失败</option>';
+    }
+};
+
+// 加载挂号费（根据选择的医生和日期）（挂载到全局作用域）
+window.loadScheduleFee = async function() {
+    const doctorId = document.getElementById('doctor-select')?.value;
+    const registrationDate = document.getElementById('registration-date')?.value;
+    const feeDisplay = document.getElementById('schedule-fee-display');
+    const feeText = document.getElementById('schedule-fee-text');
+    
+    if (!feeDisplay || !feeText) return;
+    
+    // 隐藏挂号费显示
+    feeDisplay.style.display = 'none';
+    
+    if (!doctorId || !registrationDate) {
+        return;
+    }
+    
+    try {
+        // 查询该医生在该日期的排班
+        const schedulesResponse = await RegistrationAPI.getSchedules({
+            page: 1,
+            page_size: 10,
+            doctor_id: doctorId,
+            schedule_date: registrationDate
+        });
+        
+        let schedules = [];
+        if (schedulesResponse && schedulesResponse.items) {
+            schedules = schedulesResponse.items;
+        } else if (schedulesResponse && schedulesResponse.data && schedulesResponse.data.items) {
+            schedules = schedulesResponse.data.items;
+        } else if (Array.isArray(schedulesResponse)) {
+            schedules = schedulesResponse;
+        }
+        
+        // 过滤出状态为active且有剩余号源的排班
+        const availableSchedules = schedules.filter(s => 
+            s.status === 'active' && 
+            (s.available_quota || s.available_slots || 0) > 0
+        );
+        
+        if (availableSchedules.length === 0) {
+            feeDisplay.style.display = 'block';
+            feeText.innerHTML = '<span class="text-warning">该医生在该日期没有可用的排班，无法挂号</span>';
+            feeDisplay.querySelector('.alert').className = 'alert alert-warning mb-0';
+            return;
+        }
+        
+        // 显示挂号费（如果有多个排班，显示价格范围）
+        const prices = availableSchedules.map(s => s.price || 0).filter(p => p > 0);
+        if (prices.length > 0) {
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            
+            if (minPrice === maxPrice) {
+                feeText.innerHTML = `挂号费：<strong class="text-primary">¥${minPrice.toFixed(2)}</strong>`;
+            } else {
+                feeText.innerHTML = `挂号费：<strong class="text-primary">¥${minPrice.toFixed(2)} - ¥${maxPrice.toFixed(2)}</strong>`;
+            }
+            feeDisplay.style.display = 'block';
+            feeDisplay.querySelector('.alert').className = 'alert alert-info mb-0';
+        } else {
+            feeText.innerHTML = '<span class="text-muted">该医生在该日期的排班未设置挂号费</span>';
+            feeDisplay.style.display = 'block';
+            feeDisplay.querySelector('.alert').className = 'alert alert-secondary mb-0';
+        }
+    } catch (error) {
+        console.error('加载挂号费失败:', error);
+        feeText.innerHTML = '<span class="text-danger">加载挂号费失败，请稍后重试</span>';
+        feeDisplay.style.display = 'block';
+        feeDisplay.querySelector('.alert').className = 'alert alert-danger mb-0';
+    }
+    
+    // 如果已选择时间段，同时更新剩余号源数
+    const timeSlot = document.getElementById('time-slot-select')?.value;
+    if (timeSlot !== undefined) {
+        await window.loadAvailableQuota();
+    }
+};
+
+// 加载剩余号源数（根据选择的医生、日期和时间段）（挂载到全局作用域）
+window.loadAvailableQuota = async function() {
+    console.log('loadAvailableQuota: 开始执行');
+    const doctorId = document.getElementById('doctor-select')?.value;
+    const registrationDate = document.getElementById('registration-date')?.value;
+    const timeSlot = document.getElementById('time-slot-select')?.value;
+    const quotaDisplay = document.getElementById('available-quota-display');
+    const quotaText = document.getElementById('available-quota-text');
+    
+    console.log('loadAvailableQuota: 参数', { doctorId, registrationDate, timeSlot, hasQuotaDisplay: !!quotaDisplay, hasQuotaText: !!quotaText });
+    
+    if (!quotaDisplay || !quotaText) {
+        console.warn('loadAvailableQuota: 显示元素未找到');
+        return;
+    }
+    
+    // 隐藏剩余号源数显示
+    quotaDisplay.style.display = 'none';
+    
+    // 如果没有选择医生或日期，不显示
+    if (!doctorId || !registrationDate) {
+        console.log('loadAvailableQuota: 医生或日期未选择，跳过');
+        return;
+    }
+    
+    // 如果没有选择时间段，不显示（但用户可能选择"不指定"）
+    if (timeSlot === undefined || timeSlot === null) {
+        console.log('loadAvailableQuota: 时间段未选择，跳过');
+        return;
+    }
+    
+    try {
+        console.log('loadAvailableQuota: 开始查询排班', { doctorId, registrationDate, timeSlot });
+        // 查询该医生在该日期的排班
+        const schedulesResponse = await RegistrationAPI.getSchedules({
+            page: 1,
+            page_size: 100, // 获取更多数据以确保覆盖所有时间段
+            doctor_id: doctorId,
+            schedule_date: registrationDate
+        });
+        
+        console.log('loadAvailableQuota: 排班响应', schedulesResponse);
+        
+        let schedules = [];
+        if (schedulesResponse && schedulesResponse.items) {
+            schedules = schedulesResponse.items;
+        } else if (schedulesResponse && schedulesResponse.data && schedulesResponse.data.items) {
+            schedules = schedulesResponse.data.items;
+        } else if (Array.isArray(schedulesResponse)) {
+            schedules = schedulesResponse;
+        }
+        
+        console.log('loadAvailableQuota: 解析后的排班列表', schedules);
+        
+        // 过滤出状态为active的排班
+        const activeSchedules = schedules.filter(s => s.status === 'active');
+        
+        console.log('loadAvailableQuota: 活跃排班', activeSchedules);
+        
+        if (activeSchedules.length === 0) {
+            quotaDisplay.style.display = 'block';
+            quotaText.innerHTML = '<span class="text-warning">该医生在该日期没有可用的排班</span>';
+            quotaDisplay.querySelector('.alert').className = 'alert alert-warning mb-0';
+            console.log('loadAvailableQuota: 没有活跃排班');
+            return;
+        }
+        
+        let totalAvailableQuota = 0;
+        
+        if (!timeSlot || timeSlot === '') {
+            // 选择"不指定"，显示所有时间段的剩余号源总数
+            console.log('loadAvailableQuota: 计算所有时间段的剩余号源');
+            totalAvailableQuota = activeSchedules.reduce((sum, s) => {
+                const available = s.available_quota || s.available_slots || 
+                    ((s.total_quota || s.total_slots || 0) - (s.used_quota || s.used_slots || 0));
+                console.log('loadAvailableQuota: 排班剩余号源', { 
+                    id: s.id, 
+                    total_quota: s.total_quota || s.total_slots, 
+                    used_quota: s.used_quota || s.used_slots,
+                    available 
+                });
+                return sum + (available > 0 ? available : 0);
+            }, 0);
+            
+            console.log('loadAvailableQuota: 总剩余号源数', totalAvailableQuota);
+            quotaDisplay.style.display = 'block';
+            if (totalAvailableQuota > 0) {
+                quotaText.innerHTML = `剩余号源总数：<strong class="text-success">${totalAvailableQuota}</strong> 个`;
+                quotaDisplay.querySelector('.alert').className = 'alert alert-success mb-0';
+            } else {
+                quotaText.innerHTML = '<span class="text-warning">所有时间段号源已满</span>';
+                quotaDisplay.querySelector('.alert').className = 'alert alert-warning mb-0';
+            }
+        } else {
+            // 选择了具体时间段，查找匹配的排班
+            // 时间段值格式为 "09:00"，需要匹配排班的 start_time
+            console.log('loadAvailableQuota: 查找匹配时间段的排班', timeSlot);
+            const matchingSchedules = activeSchedules.filter(s => {
+                if (!s.start_time) {
+                    console.log('loadAvailableQuota: 排班没有start_time', s);
+                    return false;
+                }
+                // start_time 格式可能是 "09:00:00" 或 "09:00"
+                const startTimeStr = s.start_time.toString();
+                const startHourMin = startTimeStr.substring(0, 5); // 取前5个字符 "HH:MM"
+                const matches = startHourMin === timeSlot;
+                console.log('loadAvailableQuota: 时间段匹配', { 
+                    start_time: s.start_time, 
+                    startHourMin, 
+                    timeSlot, 
+                    matches 
+                });
+                return matches;
+            });
+            
+            console.log('loadAvailableQuota: 匹配的排班', matchingSchedules);
+            
+            if (matchingSchedules.length === 0) {
+                quotaDisplay.style.display = 'block';
+                quotaText.innerHTML = '<span class="text-warning">该时间段没有排班</span>';
+                quotaDisplay.querySelector('.alert').className = 'alert alert-warning mb-0';
+                console.log('loadAvailableQuota: 没有匹配的排班');
+                return;
+            }
+            
+            // 计算该时间段的总剩余号源数（可能有多个排班匹配同一时间段）
+            totalAvailableQuota = matchingSchedules.reduce((sum, s) => {
+                const available = s.available_quota || s.available_slots || 
+                    ((s.total_quota || s.total_slots || 0) - (s.used_quota || s.used_slots || 0));
+                console.log('loadAvailableQuota: 匹配排班的剩余号源', { 
+                    id: s.id, 
+                    total_quota: s.total_quota || s.total_slots, 
+                    used_quota: s.used_quota || s.used_slots,
+                    available 
+                });
+                return sum + (available > 0 ? available : 0);
+            }, 0);
+            
+            console.log('loadAvailableQuota: 该时间段总剩余号源数', totalAvailableQuota);
+            quotaDisplay.style.display = 'block';
+            if (totalAvailableQuota > 0) {
+                quotaText.innerHTML = `剩余号源数：<strong class="text-success">${totalAvailableQuota}</strong> 个`;
+                quotaDisplay.querySelector('.alert').className = 'alert alert-success mb-0';
+            } else {
+                quotaText.innerHTML = '<span class="text-warning">该时间段号源已满</span>';
+                quotaDisplay.querySelector('.alert').className = 'alert alert-warning mb-0';
+            }
+        }
+    } catch (error) {
+        console.error('loadAvailableQuota: 加载剩余号源数失败', error);
+        quotaText.innerHTML = '<span class="text-danger">加载剩余号源数失败，请稍后重试</span>';
+        quotaDisplay.style.display = 'block';
+        quotaDisplay.querySelector('.alert').className = 'alert alert-danger mb-0';
+    }
+};
+
+// 取消挂号（挂载到全局作用域）
+window.cancelRegistration = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认取消',
+        message: '确定要取消该挂号吗？',
+        confirmText: '取消挂号',
+        confirmType: 'danger'
+    });
+    
+    if (confirmed) {
+        try {
+                await RegistrationAPI.cancel(id);
+            utils.showToast('取消挂号成功', 'success');
+            if (window.loadRegistrations) {
+                window.loadRegistrations();
+            }
+        } catch (error) {
+            console.error('取消挂号失败:', error);
+            const errorMsg = error.message || '取消挂号失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+</script>
+

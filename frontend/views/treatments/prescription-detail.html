@@ -1,0 +1,329 @@
+<!-- 处方详情页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('treatments')">诊疗管理</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('prescriptions')">处方管理</a></li>
+            <li class="breadcrumb-item active">处方详情</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-prescription"></i> 处方详情</h1>
+        <div class="d-flex gap-2 align-items-center">
+            <div class="input-group" style="width: 200px;">
+                <label class="input-group-text" for="print-template-select">
+                    <i class="bi bi-file-earmark-text"></i>
+                </label>
+                <select class="form-select" id="print-template-select" onchange="if(window.onPrescriptionTemplateSelectChange) window.onPrescriptionTemplateSelectChange()">
+                    <option value="">使用默认模板</option>
+                </select>
+            </div>
+            <button type="button" class="btn btn-info" onclick="if(window.printPrescription) window.printPrescription()">
+                <i class="bi bi-printer"></i> 打印
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="app.navigate('prescriptions')">
+                <i class="bi bi-arrow-left"></i> 返回
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="prescription-detail-container"></div>
+
+<script>
+let prescriptionId = null;
+let prescriptionData = null;
+let printTemplates = [];
+let selectedTemplateId = null;
+
+window.pageInit = async function() {
+    // 从URL获取参数（支持SPA路由）
+    let urlParams;
+    if (window.location.hash && window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        urlParams = new URLSearchParams(hashQuery);
+    } else {
+        urlParams = new URLSearchParams(window.location.search);
+    }
+    
+    prescriptionId = urlParams.get('id');
+    
+    if (!prescriptionId) {
+        document.getElementById('prescription-detail-container').innerHTML = '<div class="alert alert-danger">处方ID不存在</div>';
+        return;
+    }
+    
+    await loadPrintTemplates();
+    await loadPrescriptionDetail();
+};
+
+// 加载打印模板列表
+async function loadPrintTemplates() {
+    try {
+        const response = await PrintTemplateAPI.getList({
+            page: 1,
+            page_size: 100,
+            type: 'prescription'
+        });
+        
+        let items = [];
+        if (response && response.data) {
+            items = response.data.items || [];
+        } else if (response && response.items) {
+            items = response.items || [];
+        }
+        
+        printTemplates = items;
+        
+        // 填充模板选择下拉框
+        const select = document.getElementById('print-template-select');
+        if (select) {
+            select.innerHTML = '<option value="">使用默认模板</option>';
+            printTemplates.forEach(template => {
+                const option = document.createElement('option');
+                option.value = template.id;
+                option.textContent = template.name + (template.is_default ? ' (默认)' : '');
+                if (template.is_default) {
+                    option.selected = true;
+                    selectedTemplateId = template.id;
+                }
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('加载打印模板失败:', error);
+    }
+}
+
+// 模板选择变化
+window.onPrescriptionTemplateSelectChange = function() {
+    const select = document.getElementById('print-template-select');
+    if (select) {
+        selectedTemplateId = select.value || null;
+    }
+};
+
+// 加载处方详情
+async function loadPrescriptionDetail() {
+    const container = document.getElementById('prescription-detail-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API
+        const response = await TreatmentAPI.getPrescriptionDetail(prescriptionId);
+        const prescription = response.data || response;
+        
+        // 适配后端返回的字段名
+        if (!prescription.id) prescription.id = prescriptionId;
+        prescription.prescription_no = prescription.prescription_no || prescription.prescription_number || prescriptionId;
+        prescription.items = prescription.items || prescription.drug_items || [];
+        prescription.total_amount = prescription.total_amount || prescription.total || 0;
+        
+        // 确保items是数组格式
+        if (!Array.isArray(prescription.items)) {
+            if (typeof prescription.items === 'object' && prescription.items !== null) {
+                // 如果是对象/字典格式，转换为数组
+                prescription.items = Object.entries(prescription.items).map(([drug_id, item_data]) => {
+                    if (typeof item_data === 'object' && item_data !== null) {
+                        return {
+                            drug_id: drug_id,
+                            drug_name: item_data.drug_name || item_data.name || '',
+                            specification: item_data.specification || '',
+                            quantity: item_data.quantity || 0,
+                            unit: item_data.unit || '',
+                            usage: item_data.usage || item_data.dosage || '',
+                            price: item_data.price || item_data.unit_price || 0,
+                            amount: item_data.amount || ((item_data.price || item_data.unit_price || 0) * (item_data.quantity || 0))
+                        };
+                    }
+                    return null;
+                }).filter(item => item !== null);
+            } else {
+                prescription.items = [];
+            }
+        }
+        
+        console.log('处方详情数据:', {
+            prescription_id: prescription.id,
+            items_count: prescription.items ? prescription.items.length : 0,
+            items: prescription.items
+        });
+        
+        // 保存处方数据供打印使用
+        prescriptionData = prescription;
+        
+        // 格式化创建时间：年-月-日 HH:mm:ss
+        let createdAt = prescription.created_at || '';
+        if (createdAt) {
+            try {
+                const date = new Date(createdAt);
+                if (!isNaN(date.getTime())) {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    const seconds = String(date.getSeconds()).padStart(2, '0');
+                    createdAt = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                }
+            } catch (e) {
+                // 保持原格式
+            }
+        }
+        
+        container.innerHTML = `
+            <!-- 基本信息 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> 基本信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">处方号</label>
+                            <div class="fw-bold">${prescription.prescription_no || prescription.id}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">患者姓名</label>
+                            <div class="fw-bold">${prescription.patient_name || prescription.patient?.name || '-'}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">性别</label>
+                            <div class="fw-bold">${prescription.patient_gender === 'male' ? '男' : prescription.patient_gender === 'female' ? '女' : '-'}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">年龄</label>
+                            <div class="fw-bold">${prescription.patient_age || prescription.patient?.age || '-'}${prescription.patient_age ? '岁' : ''}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">医生</label>
+                            <div class="fw-bold">${prescription.doctor_name || prescription.doctor?.name || '-'}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">科室</label>
+                            <div class="fw-bold">${prescription.department || prescription.department_name || '-'}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">诊断</label>
+                            <div class="fw-bold">${prescription.diagnosis || prescription.western_diagnosis || prescription.tcm_syndrome || '-'}</div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">状态</label>
+                            <div>
+                                ${(prescription.status || prescription.prescription_status) === 'pending' ? '<span class="badge bg-warning">待发药</span>' : 
+                                  (prescription.status || prescription.prescription_status) === 'dispensed' ? '<span class="badge bg-success">已发药</span>' : 
+                                  '<span class="badge bg-danger">已取消</span>'}
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label text-muted">开具时间</label>
+                            <div>${createdAt || prescription.created_at || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 处方药品 -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-capsule"></i> 处方药品</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>序号</th>
+                                    <th>药品名称</th>
+                                    <th>规格</th>
+                                    <th>数量</th>
+                                    <th>单位</th>
+                                    <th>用法用量</th>
+                                    <th>单价</th>
+                                    <th>金额</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${prescription.items && prescription.items.length > 0 ? prescription.items.map((item, index) => `
+                                    <tr>
+                                        <td>${index + 1}</td>
+                                        <td>${item.drug_name || item.drug?.name || '-'}</td>
+                                        <td>${item.specification || item.drug?.specification || '-'}</td>
+                                        <td>${item.quantity || 0}</td>
+                                        <td>${item.unit || item.drug?.unit || '-'}</td>
+                                        <td>${item.usage || item.dosage || item.usage_instruction || '-'}</td>
+                                        <td class="text-right">${utils.formatMoney(item.price || item.unit_price || 0)}</td>
+                                        <td class="text-right fw-bold">${utils.formatMoney(item.amount || (item.price || item.unit_price || 0) * (item.quantity || 0))}</td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="8" class="text-center text-muted">暂无药品明细</td></tr>'}
+                                <tr class="table-info">
+                                    <td colspan="7" class="text-right fw-bold">合计：</td>
+                                    <td class="text-right fw-bold">${utils.formatMoney(prescription.total_amount || 0)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('加载处方详情失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载处方详情失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 打印处方（挂载到全局作用域）
+window.printPrescription = async function() {
+    if (selectedTemplateId) {
+        // 使用选中的模板打印
+        try {
+            const response = await PrintTemplateAPI.preview(selectedTemplateId, {
+                data_type: 'prescription',
+                data_id: prescriptionId
+            });
+            
+            let html = '';
+            if (response && response.data && response.data.html) {
+                html = response.data.html;
+            } else if (response && response.html) {
+                html = response.html;
+            }
+            
+            if (html) {
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(html);
+                printWindow.document.close();
+                printWindow.onload = function() {
+                    printWindow.print();
+                };
+            } else {
+                window.print();
+            }
+        } catch (error) {
+            console.error('使用模板打印失败:', error);
+            window.print();
+        }
+    } else {
+        window.print();
+    }
+};
+</script>
+
+<style>
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    .page-header,
+    .btn {
+        display: none !important;
+    }
+}
+</style>
+

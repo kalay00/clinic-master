@@ -1,0 +1,354 @@
+<template>
+  <div class="his-page consultation-page" style="padding-bottom: 80px">
+    <div class="consultation-top-tabs">
+      <div class="top-tab" @click="goTab('western')">处方</div>
+      <div class="top-tab active" @click="goTab('record')">病历</div>
+    </div>
+
+    <div class="his-card patient-card">
+      <PatientForm />
+    </div>
+
+    <div class="his-card prescription-card">
+      <div class="prescription-tabs">
+        <div class="prescription-tab active">中药处方1</div>
+      </div>
+      <div class="prescription-main">
+        <div class="prescription-left">
+          <div class="rx-header">
+            <span class="rx-title">Rp</span>
+          </div>
+          <div class="chinese-content">
+            <p class="placeholder-text">中药处方内容区，可从右侧药品库选择中药药品。</p>
+          </div>
+        </div>
+        <div class="prescription-right">
+          <div class="drug-toolbar">
+            <select class="his-select" style="width: 110px">
+              <option value="">药品分类</option>
+              <option value="chinese">中药</option>
+            </select>
+            <div class="drug-search">
+              <input class="his-input" placeholder="输入药品中文或拼音名称" />
+              <button class="search-btn">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                  <path d="M11.7422 10.3439C12.5329 9.2673 13 7.9382 13 6.5C13 2.91015 10.0899 0 6.5 0C2.91015 0 0 2.91015 0 6.5C0 10.0899 2.91015 13 6.5 13C7.9382 13 9.2673 12.5329 10.3439 11.7422L14.1464 15.5456L15 14.6921L11.7422 10.3439ZM6.5 11.5C3.73858 11.5 1.5 9.26142 1.5 6.5C1.5 3.73858 3.73858 1.5 6.5 1.5C9.26142 1.5 11.5 3.73858 11.5 6.5C11.5 9.26142 9.26142 11.5 6.5 11.5Z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="drug-table-wrap">
+            <table class="drug-table">
+              <thead>
+                <tr>
+                  <th style="width: 32px"><input type="checkbox" /></th>
+                  <th>名称</th>
+                  <th style="width: 70px">规格</th>
+                  <th style="width: 60px">库存</th>
+                  <th style="width: 60px">价格</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="5" style="text-align: center; color: #9ca3af; padding: 40px 0">暂无中药药品数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="his-bottom-bar consultation-bottom-bar">
+      <button class="bottom-btn" @click="goTemplateCall">处方调用</button>
+      <button class="bottom-btn" @click="printRx">打印处方</button>
+      <button class="bottom-btn" @click="goTemplateCreate">存为模板</button>
+      <button class="bottom-btn primary" @click="onSave">保存</button>
+      <button class="bottom-btn warning" @click="goCharge">收费</button>
+      <button class="bottom-btn danger" @click="goEnd">结束就诊</button>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { useRouter, useRoute } from 'vue-router'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import PatientForm from './components/PatientForm.vue'
+import { getRegistration } from '@/api/registration'
+import { createMedicalRecord, createPrescription } from '@/api/treatment'
+import { useUserStore } from '@/store/modules/user'
+
+const router = useRouter()
+const route = useRoute()
+
+const patient = reactive({ name: '', no: '', gender: '', age: '' })
+const form = reactive({
+  chiefComplaint: '', presentIllness: '', pastHistory: '',
+  allergyHistory: '', physicalExam: '', diagnosis: '', advice: '',
+})
+const recipeList = ref([])
+
+const regId = computed(() => route.query.regId || '')
+const patientId = ref('')
+const registrationId = ref('')
+
+onMounted(async () => {
+  if (regId.value) {
+    try {
+      const reg = await getRegistration(regId.value)
+      registrationId.value = reg.id || regId.value
+      patientId.value = reg.patient_id || ''
+      patient.name = reg.patient_name || patient.name
+    } catch (e) { /* 忽略 */ }
+  }
+})
+
+const goTab = (name) => {
+  if (name === 'western') router.push('/consultation/western')
+}
+
+const goTemplateCall = () => router.push('/consultation/prescription/template-call')
+const goTemplateCreate = () => router.push('/consultation/prescription/template-create')
+const goCharge = () => router.push('/consultation/charge')
+const goEnd = () => router.push('/consultation/charge/confirm')
+const printRx = () => {
+  ElMessage.info('调用浏览器打印')
+  window.print()
+}
+const onSave = async () => {
+  if (!patientId.value) {
+    ElMessage.warning('请先选择就诊患者')
+    return
+  }
+  try {
+    await createMedicalRecord({
+      registration_id: registrationId.value,
+      patient_id: patientId.value,
+      chief_complaint: form.chiefComplaint,
+      present_illness: form.presentIllness,
+      past_history: form.pastHistory,
+      allergy_history: form.allergyHistory,
+      physical_exam: form.physicalExam,
+      diagnosis: form.diagnosis,
+      advice: form.advice,
+    })
+    await createPrescription({
+      patient_id: patientId.value,
+      doctor_id: useUserStore().userInfo?.id || '',
+      prescription_type: 'chinese_medicine',
+      items: recipeList.value.map(it => ({
+        name: it.name,
+        spec: it.spec,
+        dosage: it.dosage,
+        dosage_unit: it.dosageUnit,
+        usage: it.usage,
+        days: it.days,
+        price: it.price,
+      })),
+    })
+    ElMessage.success('保存成功')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+@import '@/styles/his-ui.css';
+
+.consultation-page {
+  background: #f5f7fa;
+}
+.consultation-top-tabs {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  background: #fff;
+}
+.top-tab {
+  padding: 9px 28px;
+  font-size: 14px;
+  color: #4b5563;
+  cursor: pointer;
+  border-right: 1px solid #d1d5db;
+  transition: color 0.2s, background 0.2s;
+  user-select: none;
+}
+.top-tab:last-child {
+  border-right: none;
+}
+.top-tab.active {
+  color: #fff;
+  background: #7b8dfd;
+  font-weight: 500;
+}
+.patient-card {
+  margin-bottom: 12px;
+  padding: 16px 20px;
+}
+.prescription-card {
+  padding: 0;
+  overflow: hidden;
+}
+.prescription-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+.prescription-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #4b5563;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.prescription-tab.active {
+  color: #fff;
+  background: #7b8dfd;
+  border-color: #7b8dfd;
+}
+.prescription-main {
+  display: flex;
+  min-height: 420px;
+}
+.prescription-left {
+  flex: 1;
+  min-width: 0;
+  padding: 16px;
+  border-right: 1px solid #e5e7eb;
+}
+.rx-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.rx-title {
+  font-size: 28px;
+  color: #7b8dfd;
+  font-weight: 600;
+  font-family: 'Times New Roman', serif;
+}
+.chinese-content {
+  padding: 40px 20px;
+  text-align: center;
+}
+.placeholder-text {
+  color: #9ca3af;
+  font-size: 14px;
+}
+.prescription-right {
+  width: 320px;
+  min-width: 320px;
+  padding: 16px;
+  background: #fff;
+}
+.drug-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.drug-search {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+}
+.drug-search .his-input {
+  flex: 1;
+  font-size: 13px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.search-btn {
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #7b8dfd;
+  color: #fff;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+}
+.drug-table-wrap {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.drug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.drug-table th {
+  padding: 10px 8px;
+  background: #f9fafb;
+  color: #374151;
+  font-weight: 500;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+.drug-table td {
+  padding: 9px 8px;
+  color: #4b5563;
+  border-bottom: 1px solid #f3f4f6;
+}
+.consultation-bottom-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+}
+.bottom-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  font-size: 14px;
+  color: #4b5563;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.bottom-btn:hover {
+  color: #7b8dfd;
+  border-color: #7b8dfd;
+}
+.bottom-btn.primary {
+  color: #fff;
+  background: #7b8dfd;
+  border-color: #7b8dfd;
+}
+.bottom-btn.primary:hover {
+  background: #6876e8;
+}
+.bottom-btn.warning {
+  color: #fff;
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+.bottom-btn.warning:hover {
+  background: #d97706;
+}
+.bottom-btn.danger {
+  color: #fff;
+  background: #ef4444;
+  border-color: #ef4444;
+}
+.bottom-btn.danger:hover {
+  background: #dc2626;
+}
+</style>

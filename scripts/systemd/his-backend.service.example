@@ -1,0 +1,39 @@
+[Unit]
+Description=门诊诊所管理系统 - 后端服务
+Documentation=https://github.com/your-org/his
+After=network.target postgres.service redis.service
+Requires=network.target
+
+[Service]
+Type=simple
+User=his
+Group=his
+WorkingDirectory=/opt/his/backend
+Environment="PATH=/opt/his/backend/venv/bin"
+EnvironmentFile=/opt/his/.env
+
+# 启动命令
+ExecStart=/opt/his/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# 重启策略
+Restart=always
+RestartSec=10
+
+# 安全配置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/his/backend/logs
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=his-backend
+
+# 资源限制
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

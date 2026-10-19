@@ -1,0 +1,554 @@
+<!-- 药房管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">药房管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-capsule"></i> 药房管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-primary" onclick="showAddDrugModal()">
+        <i class="bi bi-plus-circle"></i> 新增药品
+    </button>
+    <button type="button" class="btn btn-success" onclick="showStockInModal()">
+        <i class="bi bi-box-arrow-in-down"></i> 入库
+    </button>
+    <button type="button" class="btn btn-warning" onclick="showStockOutModal()">
+        <i class="bi bi-box-arrow-up"></i> 出库
+    </button>
+    <button type="button" class="btn btn-info" onclick="app.navigate('inventory-warning')">
+        <i class="bi bi-exclamation-triangle"></i> 库存预警
+    </button>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 药品列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">药品列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="drugs-table-container"></div>
+        <div id="drugs-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+// 挂载到全局作用域
+window.pageInit = function() {
+    window.initSearchBar();
+    window.loadDrugs();
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'drug-search',
+        placeholder: '请输入药品名称、编码搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            loadDrugs();
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'type-filter',
+                label: '类型',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'western', text: '西药' },
+                    { value: 'tcm', text: '中药' },
+                    { value: 'chinese_patent', text: '中成药' },
+                    { value: 'antibiotic', text: '抗生素' }
+                ],
+                onChange: (value) => {
+                    currentPage = 1;
+                    loadDrugs();
+                }
+            }
+        ]
+    });
+}
+
+// 加载药品列表（挂载到全局作用域）
+window.loadDrugs = async function() {
+    const container = document.getElementById('drugs-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 获取筛选器的值
+        const typeFilter = document.getElementById('type-filter');
+        const category = typeFilter ? typeFilter.value : '';
+        
+        // 调用实际API
+        const response = await PharmacyAPI.getDrugs({
+            page: currentPage,
+            page_size: pageSize,
+            keyword: searchKeyword,
+            category: category || undefined
+        });
+        
+        // 处理后端响应格式
+        const mockData = {
+            items: response.items || [],
+            total: response.pagination?.total || 0,
+            page: response.pagination?.page || currentPage,
+            page_size: response.pagination?.page_size || pageSize,
+            total_pages: response.pagination?.pages || 0
+        };
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'drugs-table',
+            columns: [
+                {
+                    title: '药品编码',
+                    key: 'drug_code',
+                    align: 'center',
+                    render: (row) => {
+                        const code = row.drug_code || '';
+                        return `<span class="text-truncate d-inline-block" style="max-width: 120px;" title="${code}">${code || '-'}</span>`;
+                    }
+                },
+                {
+                    title: '药品名称',
+                    key: 'name',
+                    align: 'left'
+                },
+                {
+                    title: '类型',
+                    key: 'category',
+                    align: 'center',
+                    render: (row) => {
+                        // 将category映射到类型显示
+                        const categoryMap = {
+                            'western': { text: '西药', class: 'badge bg-info' },
+                            'tcm': { text: '中药', class: 'badge bg-warning' },
+                            'chinese_patent': { text: '中成药', class: 'badge bg-success' },
+                            'antibiotic': { text: '抗生素', class: 'badge bg-danger' }
+                        };
+                        const category = row.category || '';
+                        const typeInfo = categoryMap[category] || { text: category || '未分类', class: 'badge bg-secondary' };
+                        return `<span class="${typeInfo.class}">${typeInfo.text}</span>`;
+                    }
+                },
+                {
+                    title: '规格',
+                    key: 'specification',
+                    align: 'center'
+                },
+                {
+                    title: '单位',
+                    key: 'unit',
+                    align: 'center'
+                },
+                {
+                    title: '库存',
+                    key: 'stock',
+                    align: 'center',
+                    render: (row) => {
+                        const stock = row.stock || row.current_stock || 0;
+                        const minStock = row.min_stock || row.minimum_stock || 0;
+                        const stockClass = stock < minStock ? 'text-danger fw-bold' : '';
+                        return `<span class="${stockClass}">${stock}</span>`;
+                    }
+                },
+                {
+                    title: '单价',
+                    key: 'price',
+                    align: 'right',
+                    render: (row) => utils.formatMoney(row.price)
+                },
+                {
+                    title: '生产厂家',
+                    key: 'manufacturer',
+                    align: 'left',
+                    render: (row) => {
+                        const manufacturer = row.manufacturer || '';
+                        return `<span class="text-truncate d-inline-block" style="max-width: 150px;" title="${manufacturer}">${manufacturer || '-'}</span>`;
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => `
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewDrug('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="editDrug('${row.id}')">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </button>
+                        <button class="btn btn-sm btn-outline-info" onclick="showStockInModal('${row.id}')">
+                            <i class="bi bi-box-arrow-in-down"></i> 入库
+                        </button>
+                    `
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无药品数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('drugs-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    loadDrugs();
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载药品列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载药品列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示新增药品弹窗（挂载到全局作用域）
+window.showAddDrugModal = async function() {
+    const formHtml = `
+        ${FormComponents.createInput({
+            id: 'drug-name',
+            label: '药品名称',
+            name: 'name',
+            required: true,
+            placeholder: '请输入药品名称'
+        })}
+        ${FormComponents.createInput({
+            id: 'drug-code',
+            label: '药品编码',
+            name: 'drug_code',
+            required: true,
+            placeholder: '请输入药品编码'
+        })}
+        ${FormComponents.createSelect({
+            id: 'drug-type',
+            label: '药品类型',
+            name: 'category',
+            required: true,
+            options: [
+                { value: 'western', text: '西药' },
+                { value: 'tcm', text: '中药' },
+                { value: 'chinese_patent', text: '中成药' },
+                { value: 'antibiotic', text: '抗生素' }
+            ]
+        })}
+        ${FormComponents.createInput({
+            id: 'drug-specification',
+            label: '规格',
+            name: 'specification',
+            placeholder: '请输入规格'
+        })}
+        ${FormComponents.createInput({
+            id: 'drug-unit',
+            label: '单位',
+            name: 'unit',
+            required: true,
+            placeholder: '如：盒、袋、瓶等'
+        })}
+        ${FormComponents.createInput({
+            id: 'drug-price',
+            label: '单价',
+            name: 'price',
+            type: 'number',
+            required: true,
+            step: '0.01',
+            placeholder: '请输入单价'
+        })}
+        ${FormComponents.createInput({
+            id: 'drug-manufacturer',
+            label: '生产厂家',
+            name: 'manufacturer',
+            placeholder: '请输入生产厂家'
+        })}
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '新增药品',
+        formHtml: formHtml,
+        size: 'lg',
+        onSubmit: async (data) => {
+            try {
+                await PharmacyAPI.createDrug(data);
+                utils.showToast('新增药品成功', 'success');
+                loadDrugs();
+                return true;
+            } catch (error) {
+                console.error('新增药品失败:', error);
+                const errorMsg = error.message || '新增药品失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 查看药品详情（挂载到全局作用域）
+window.viewDrug = async function(id) {
+    try {
+        const response = await PharmacyAPI.getDrug(id);
+        const drug = response.data || response;
+        
+        // 类型映射
+        const categoryMap = {
+            'western': '西药',
+            'tcm': '中药',
+            'chinese_patent': '中成药',
+            'antibiotic': '抗生素'
+        };
+        
+        const detailHtml = `
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">药品编码：</label>
+                        <div>${drug.drug_code || '-'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">药品名称：</label>
+                        <div>${drug.name || '-'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">通用名称：</label>
+                        <div>${drug.generic_name || '-'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">类型：</label>
+                        <div><span class="badge bg-info">${categoryMap[drug.category] || drug.category || '未分类'}</span></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">规格：</label>
+                        <div>${drug.specification || '-'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">单位：</label>
+                        <div>${drug.unit || '-'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">单价：</label>
+                        <div>${utils.formatMoney(drug.price)}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">生产厂家：</label>
+                        <div>${drug.manufacturer || '-'}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">库存：</label>
+                        <div class="${drug.stock < 10 ? 'text-danger fw-bold' : ''}">${drug.stock || 0}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">状态：</label>
+                        <div><span class="badge ${drug.status === 'active' ? 'bg-success' : 'bg-secondary'}">${drug.status === 'active' ? '启用' : '停用'}</span></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        await ModalComponents.showInfoModal({
+            title: '药品详情',
+            content: detailHtml,
+            size: 'lg'
+        });
+    } catch (error) {
+        console.error('获取药品详情失败:', error);
+        const errorMsg = error.message || '获取药品详情失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+};
+
+// 编辑药品（挂载到全局作用域）
+window.editDrug = async function(id) {
+    try {
+        // 先获取药品详情
+        const response = await PharmacyAPI.getDrug(id);
+        const drug = response.data || response;
+        
+        const formHtml = `
+            ${FormComponents.createInput({
+                id: 'edit-drug-name',
+                label: '药品名称',
+                name: 'name',
+                required: true,
+                placeholder: '请输入药品名称',
+                value: drug.name || ''
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-drug-code',
+                label: '药品编码',
+                name: 'drug_code',
+                required: true,
+                placeholder: '请输入药品编码',
+                value: drug.drug_code || ''
+            })}
+            ${FormComponents.createSelect({
+                id: 'edit-drug-type',
+                label: '药品类型',
+                name: 'category',
+                required: true,
+                options: [
+                    { value: 'western', text: '西药', selected: drug.category === 'western' },
+                    { value: 'tcm', text: '中药', selected: drug.category === 'tcm' },
+                    { value: 'chinese_patent', text: '中成药', selected: drug.category === 'chinese_patent' },
+                    { value: 'antibiotic', text: '抗生素', selected: drug.category === 'antibiotic' }
+                ]
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-drug-specification',
+                label: '规格',
+                name: 'specification',
+                placeholder: '请输入规格',
+                value: drug.specification || ''
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-drug-unit',
+                label: '单位',
+                name: 'unit',
+                required: true,
+                placeholder: '如：盒、袋、瓶等',
+                value: drug.unit || ''
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-drug-price',
+                label: '单价',
+                name: 'price',
+                type: 'number',
+                required: true,
+                step: '0.01',
+                placeholder: '请输入单价',
+                value: drug.price || 0
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-drug-manufacturer',
+                label: '生产厂家',
+                name: 'manufacturer',
+                placeholder: '请输入生产厂家',
+                value: drug.manufacturer || ''
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-drug-generic-name',
+                label: '通用名称',
+                name: 'generic_name',
+                placeholder: '请输入通用名称',
+                value: drug.generic_name || ''
+            })}
+        `;
+        
+        const result = await ModalComponents.showFormModal({
+            title: '编辑药品',
+            formHtml: formHtml,
+            size: 'lg',
+            onSubmit: async (data) => {
+                try {
+                    await PharmacyAPI.updateDrug(id, data);
+                    utils.showToast('更新药品成功', 'success');
+                    loadDrugs();
+                    return true;
+                } catch (error) {
+                    console.error('更新药品失败:', error);
+                    const errorMsg = error.message || '更新药品失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('获取药品详情失败:', error);
+        const errorMsg = error.message || '获取药品详情失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+};
+
+// 显示入库弹窗（挂载到全局作用域）
+window.showStockInModal = async function(drugId = null) {
+    const formHtml = `
+        ${drugId ? `<input type="hidden" name="drug_id" value="${drugId}">` : FormComponents.createInput({
+            id: 'stock-drug',
+            label: '药品',
+            name: 'drug_id',
+            required: true,
+            placeholder: '请选择药品'
+        })}
+        ${FormComponents.createInput({
+            id: 'stock-quantity',
+            label: '入库数量',
+            name: 'quantity',
+            type: 'number',
+            required: true,
+            placeholder: '请输入入库数量'
+        })}
+        ${FormComponents.createInput({
+            id: 'stock-batch',
+            label: '批次号',
+            name: 'batch_no',
+            placeholder: '请输入批次号'
+        })}
+        ${FormComponents.createDatePicker({
+            id: 'stock-expiry',
+            label: '有效期至',
+            name: 'expiry_date',
+            placeholder: '请输入有效期'
+        })}
+        ${FormComponents.createTextarea({
+            id: 'stock-remark',
+            label: '备注',
+            name: 'remark',
+            rows: 2,
+            placeholder: '请输入备注'
+        })}
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '药品入库',
+        formHtml: formHtml,
+        size: 'lg',
+        onSubmit: async (data) => {
+            try {
+                await PharmacyAPI.stockIn(data);
+                utils.showToast('入库成功', 'success');
+                loadDrugs();
+                return true;
+            } catch (error) {
+                console.error('入库失败:', error);
+                const errorMsg = error.message || '入库失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 显示出库弹窗（挂载到全局作用域）
+window.showStockOutModal = async function() {
+    utils.showToast('出库功能待实现', 'info');
+};
+</script>
+

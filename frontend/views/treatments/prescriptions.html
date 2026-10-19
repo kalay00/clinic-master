@@ -1,0 +1,1194 @@
+<!-- 处方管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('treatments')">诊疗管理</a></li>
+            <li class="breadcrumb-item active">处方管理</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+    <h1><i class="bi bi-prescription"></i> 处方管理</h1>
+        <button type="button" class="btn btn-primary" onclick="if(window.showAddPrescriptionModal) window.showAddPrescriptionModal()">
+            <i class="bi bi-plus-circle"></i> 新增处方
+        </button>
+    </div>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 处方列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">处方列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="prescriptions-table-container"></div>
+        <div id="prescriptions-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+// 注意：权限检查函数已在 permission.js 中统一实现
+// 这里不再重复定义，使用全局的 window.hasPermission 函数
+
+// 初始化添加药品相关函数（在页面加载时就定义，确保始终可用）
+(function() {
+    // 添加药品功能
+    window.addPrescriptionItem = async function() {
+        // 加载药品列表
+        let drugOptions = [{ value: '', text: '请选择药品' }];
+        try {
+            const drugsResponse = await PharmacyAPI.getDrugs({ page: 1, page_size: 100 });
+            const drugs = drugsResponse.items || drugsResponse.data?.items || [];
+            drugOptions = [
+                { value: '', text: '请选择药品' },
+                ...drugs.map(d => ({ 
+                    value: d.id, 
+                    text: `${d.name || d.drug_name || '未知药品'} (${d.specification || ''})`,
+                    data: d
+                }))
+            ];
+        } catch (error) {
+            console.error('加载药品列表失败:', error);
+            if (window.utils && window.utils.showToast) {
+                window.utils.showToast('加载药品列表失败', 'warning');
+            }
+        }
+        
+        const container = document.getElementById('prescription-items-container');
+        if (!container) return;
+        
+        // 移除提示信息
+        const alert = container.querySelector('.alert');
+        if (alert) alert.remove();
+        
+        const itemHtml = `
+            <div class="prescription-item-row border rounded p-3 mb-2">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label small">药品</label>
+                        <select class="form-select form-select-sm item-drug-id" onchange="if(window.onDrugSelect) window.onDrugSelect(this)">
+                            ${drugOptions.map(opt => `<option value="${opt.value}" data-price="${opt.data?.price || 0}" data-unit="${opt.data?.unit || ''}">${opt.text}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">数量</label>
+                        <input type="number" class="form-control form-control-sm item-quantity" value="1" min="1" onchange="if(window.calculatePrescriptionTotal) window.calculatePrescriptionTotal()">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">单位</label>
+                        <input type="text" class="form-control form-control-sm item-unit" readonly>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">单价</label>
+                        <input type="number" class="form-control form-control-sm item-price" value="0" step="0.01" onchange="if(window.calculatePrescriptionTotal) window.calculatePrescriptionTotal()">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">金额</label>
+                        <input type="number" class="form-control form-control-sm item-amount" value="0" step="0.01" readonly>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label small">用法用量</label>
+                        <input type="text" class="form-control form-control-sm item-dosage" placeholder="如：1片/次，3次/日">
+                    </div>
+                    <div class="col-md-12">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.prescription-item-row').remove(); if(window.calculatePrescriptionTotal) window.calculatePrescriptionTotal()">
+                            <i class="bi bi-trash"></i> 删除
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.insertAdjacentHTML('beforeend', itemHtml);
+    };
+    
+    // 药品选择事件处理
+    window.onDrugSelect = function(select) {
+        const row = select.closest('.prescription-item-row');
+        if (!row) return;
+        const option = select.options[select.selectedIndex];
+        const price = parseFloat(option.getAttribute('data-price') || 0);
+        const unit = option.getAttribute('data-unit') || '';
+        
+        const priceInput = row.querySelector('.item-price');
+        const unitInput = row.querySelector('.item-unit');
+        if (priceInput) priceInput.value = price;
+        if (unitInput) unitInput.value = unit;
+        
+        if (window.calculatePrescriptionTotal) {
+            window.calculatePrescriptionTotal();
+        }
+    };
+    
+    // 计算处方总金额
+    window.calculatePrescriptionTotal = function() {
+        const totalInput = document.getElementById('prescription-total-amount');
+        if (!totalInput) return;
+        
+        let total = 0;
+        document.querySelectorAll('.prescription-item-row').forEach(row => {
+            const quantity = parseFloat(row.querySelector('.item-quantity')?.value || 0);
+            const price = parseFloat(row.querySelector('.item-price')?.value || 0);
+            const amount = quantity * price;
+            
+            const amountInput = row.querySelector('.item-amount');
+            if (amountInput) amountInput.value = amount.toFixed(2);
+            total += amount;
+        });
+        
+        totalInput.value = total.toFixed(2);
+    };
+})();
+
+// 挂载到全局作用域
+window.pageInit = function() {
+    // 检查URL参数，如果有action=add，自动打开新增处方弹窗
+    let urlParams;
+    if (window.location.hash && window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        urlParams = new URLSearchParams(hashQuery);
+    } else {
+        urlParams = new URLSearchParams(window.location.search);
+    }
+    
+    const action = urlParams.get('action');
+    if (action === 'add' || action === 'create') {
+        // 延迟执行，确保页面完全加载
+        setTimeout(() => {
+            if (window.showAddPrescriptionModal) {
+                window.showAddPrescriptionModal();
+            }
+        }, 500);
+    } else {
+        if (window.initSearchBar) {
+            window.initSearchBar();
+        }
+        if (window.loadPrescriptions) {
+            window.loadPrescriptions();
+        }
+    }
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'prescription-search',
+        placeholder: '请输入处方号、患者姓名搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            if (window.loadPrescriptions) {
+                window.loadPrescriptions();
+            }
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'status-filter',
+                label: '状态',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'pending', text: '待发药' },
+                    { value: 'dispensed', text: '已发药' },
+                    { value: 'cancelled', text: '已取消' }
+                ],
+                onChange: (value) => {
+                    currentPage = 1;
+                    if (window.loadPrescriptions) {
+                        window.loadPrescriptions();
+                    }
+                }
+            }
+        ]
+    });
+}
+
+// 加载处方列表（挂载到全局作用域）
+window.loadPrescriptions = async function() {
+    const container = document.getElementById('prescriptions-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 获取筛选条件
+        const statusFilter = document.getElementById('status-filter');
+        const status = statusFilter ? statusFilter.value : '';
+        
+        // 构建API参数
+        const params = {
+            page: currentPage,
+            page_size: pageSize
+        };
+        if (searchKeyword) {
+            params.keyword = searchKeyword;
+        }
+        if (status) {
+            params.status = status;
+        }
+        
+        // 调用实际API
+        const response = await TreatmentAPI.getPrescriptions(params);
+        
+        // 处理后端响应格式 {code, message, data: {items: [], pagination: {total, page, page_size, pages}}}
+        let items = [];
+        let pagination = null;
+        
+        if (response) {
+            if (response.data && response.data.items) {
+                items = response.data.items;
+                pagination = response.data.pagination;
+            } else if (response.items) {
+                items = response.items;
+                pagination = response.pagination;
+            } else if (Array.isArray(response)) {
+                items = response;
+            }
+        }
+        
+        const mockData = {
+            items: items,
+            total: pagination?.total || items.length,
+            page: pagination?.page || currentPage,
+            page_size: pagination?.page_size || pageSize,
+            total_pages: pagination?.pages || Math.ceil((pagination?.total || items.length) / pageSize)
+        };
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'prescriptions-table',
+            columns: [
+                {
+                    title: '序号',
+                    key: 'index',
+                    align: 'center',
+                    width: '80px',
+                    render: (row, index) => (mockData.page - 1) * mockData.page_size + index + 1
+                },
+                {
+                    title: '挂号单号',
+                    key: 'registration_no',
+                    align: 'center',
+                    render: (row) => row.registration_no || '-'
+                },
+                {
+                    title: '处方号',
+                    key: 'prescription_no',
+                    align: 'center',
+                    render: (row) => row.prescription_no || row.prescription_number || row.id
+                },
+                {
+                    title: '患者姓名',
+                    key: 'patient_name',
+                    align: 'center'
+                },
+                {
+                    title: '医生',
+                    key: 'doctor_name',
+                    align: 'center'
+                },
+                {
+                    title: '药品数量',
+                    key: 'drug_count',
+                    align: 'center',
+                    render: (row) => row.drug_count || row.items?.length || 0
+                },
+                {
+                    title: '总金额',
+                    key: 'total_amount',
+                    align: 'right',
+                    render: (row) => utils.formatMoney(row.total_amount || row.total || 0)
+                },
+                {
+                    title: '状态',
+                    key: 'status',
+                    align: 'center',
+                    render: (row) => {
+                        const statusMap = {
+                            'pending': { text: '待发药', class: 'warning' },
+                            'dispensed': { text: '已发药', class: 'success' },
+                            'cancelled': { text: '已取消', class: 'danger' }
+                        };
+                        const statusValue = row.status || row.prescription_status || 'pending';
+                        const status = statusMap[statusValue] || { text: statusValue, class: 'secondary' };
+                        return `<span class="badge bg-${status.class}">${status.text}</span>`;
+                    }
+                },
+                {
+                    title: '创建时间',
+                    key: 'created_at',
+                    align: 'center',
+                    render: (row) => {
+                        if (!row.created_at) return '-';
+                        try {
+                            const date = new Date(row.created_at);
+                            if (isNaN(date.getTime())) return row.created_at;
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            const seconds = String(date.getSeconds()).padStart(2, '0');
+                            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                        } catch (e) {
+                            return row.created_at;
+                        }
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => {
+                        const statusValue = row.status || row.prescription_status || 'pending';
+                        let html = `<button class="btn btn-sm btn-outline-primary" onclick="if(window.viewPrescription) window.viewPrescription('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>`;
+                        html += `<button class="btn btn-sm btn-outline-info ms-1" onclick="if(window.printPrescription) window.printPrescription('${row.id}')">
+                            <i class="bi bi-printer"></i> 打印
+                        </button>`;
+                        if (statusValue === 'pending') {
+                            html += `<button class="btn btn-sm btn-outline-warning ms-1" onclick="if(window.editPrescription) window.editPrescription('${row.id}')">
+                                <i class="bi bi-pencil"></i> 编辑
+                            </button>`;
+                            // 检查发药权限：只有药师或管理员可以发药
+                            if (window.hasPermission && window.hasPermission('pharmacy:dispense')) {
+                                html += `<button class="btn btn-sm btn-outline-success ms-1" onclick="if(window.dispensePrescription) window.dispensePrescription('${row.id}')">
+                                <i class="bi bi-capsule"></i> 发药
+                                </button>`;
+                            }
+                            html += `<button class="btn btn-sm btn-outline-danger ms-1" onclick="if(window.deletePrescription) window.deletePrescription('${row.id}')">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>`;
+                        }
+                        return html;
+                    }
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无处方数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('prescriptions-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    if (window.loadPrescriptions) {
+                        window.loadPrescriptions();
+                    }
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载处方列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载处方列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 查看处方详情（挂载到全局作用域）
+window.viewPrescription = function(id) {
+    app.navigate(`treatments/prescription-detail?id=${id}`);
+};
+
+// 打印处方（挂载到全局作用域）
+window.printPrescription = async function(id) {
+    try {
+        // 加载打印模板列表
+        let printTemplates = [];
+        let selectedTemplateId = null;
+        
+        try {
+            const templateResponse = await PrintTemplateAPI.getList({
+                page: 1,
+                page_size: 100,
+                type: 'prescription'
+            });
+            
+            let items = [];
+            if (templateResponse && templateResponse.data) {
+                items = templateResponse.data.items || [];
+            } else if (templateResponse && templateResponse.items) {
+                items = templateResponse.items || [];
+            }
+            
+            printTemplates = items;
+            
+            // 如果有模板，显示选择对话框
+            if (printTemplates.length > 0) {
+                const templateSelected = await new Promise((resolve) => {
+                    const modalElement = document.createElement('div');
+                    modalElement.className = 'modal fade';
+                    modalElement.id = 'template-select-modal-print-prescription';
+                    modalElement.innerHTML = `
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">选择打印模板</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">选择打印模板</label>
+                                        <select class="form-select" id="template-select-modal-prescription">
+                                            <option value="">使用默认模板</option>
+                                            ${printTemplates.map(t => `
+                                                <option value="${t.id}" ${t.is_default ? 'selected' : ''}>
+                                                    ${t.name} ${t.is_default ? '(默认)' : ''}
+                                                </option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                    <button type="button" class="btn btn-primary" id="confirm-template-select-prescription">确认</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modalElement);
+                    
+                    const modal = new bootstrap.Modal(modalElement);
+                    
+                    document.getElementById('confirm-template-select-prescription').addEventListener('click', () => {
+                        const select = document.getElementById('template-select-modal-prescription');
+                        const value = select ? select.value || null : null;
+                        modal.hide();
+                        modalElement.remove();
+                        resolve(value);
+                    });
+                    
+                    modalElement.addEventListener('hidden.bs.modal', () => {
+                        modalElement.remove();
+                        resolve(null);
+                    });
+                    
+                    modal.show();
+                });
+                
+                if (templateSelected === null) {
+                    return; // 用户取消
+                }
+                
+                selectedTemplateId = templateSelected;
+            }
+            
+            // 如果选择了模板，使用模板打印
+            if (selectedTemplateId) {
+                const previewResponse = await PrintTemplateAPI.preview(selectedTemplateId, {
+                    data_type: 'prescription',
+                    data_id: id
+                });
+                
+                let html = '';
+                if (previewResponse && previewResponse.data && previewResponse.data.html) {
+                    html = previewResponse.data.html;
+                } else if (previewResponse && previewResponse.html) {
+                    html = previewResponse.html;
+                }
+                
+                if (html) {
+                    const printWindow = window.open('', '_blank');
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                    printWindow.onload = function() {
+                        printWindow.print();
+                    };
+                    return;
+                }
+            }
+        } catch (templateError) {
+            console.warn('加载打印模板失败，使用默认打印:', templateError);
+            // 继续使用默认打印
+        }
+        
+        // 使用默认打印：打开处方详情页面
+        if (window.app && window.app.navigate) {
+            window.app.navigate(`treatments/prescription-detail?id=${id}`);
+        } else {
+            window.open(`/views/treatments/prescription-detail.html?id=${id}`, '_blank');
+        }
+    } catch (error) {
+        console.error('打印处方失败:', error);
+        utils.showToast('打印处方失败: ' + (error.message || '未知错误'), 'danger');
+    }
+};
+
+// 发药（挂载到全局作用域）
+window.dispensePrescription = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认发药',
+        message: '确定要发药吗？',
+        confirmText: '确认发药',
+        confirmType: 'success'
+    });
+    
+    if (confirmed) {
+        try {
+            await PharmacyAPI.dispensePrescription(id);
+            utils.showToast('发药成功', 'success');
+            if (window.loadPrescriptions) {
+                window.loadPrescriptions();
+            }
+        } catch (error) {
+            console.error('发药失败:', error);
+            const errorMsg = error.message || '发药失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+};
+
+// 删除处方（挂载到全局作用域）
+window.deletePrescription = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认删除',
+        message: '确定要删除该处方吗？',
+        confirmText: '删除',
+        confirmType: 'danger'
+    });
+    
+    if (confirmed) {
+        try {
+            await TreatmentAPI.deletePrescription(id);
+            utils.showToast('删除成功', 'success');
+            if (window.loadPrescriptions) {
+                window.loadPrescriptions();
+            }
+        } catch (error) {
+            console.error('删除处方失败:', error);
+            const errorMsg = error.message || '删除处方失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+};
+
+// 新增处方（挂载到全局作用域）
+window.showAddPrescriptionModal = async function() {
+    // 从URL获取参数（如果有）
+    let urlParams;
+    if (window.location.hash && window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        urlParams = new URLSearchParams(hashQuery);
+    } else {
+        urlParams = new URLSearchParams(window.location.search);
+    }
+    
+    const patientId = urlParams.get('patient_id');
+    const doctorId = urlParams.get('doctor_id');
+    const medicalRecordId = urlParams.get('medical_record_id');
+    const patientName = urlParams.get('patient_name') || '';
+    const doctorName = urlParams.get('doctor_name') || '';
+    
+    // 获取当前登录用户信息，用于默认选择医生
+    let currentUserDoctorId = null;
+    try {
+        const userStr = localStorage.getItem('his_user');
+        if (userStr) {
+            const user = JSON.parse(userStr);
+            // 如果用户是医生，尝试获取医生ID
+            if (user.doctor_id) {
+                currentUserDoctorId = user.doctor_id;
+            } else if (user.id) {
+                // 尝试通过用户ID查找对应的医生
+                try {
+                    const doctorsResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+                    const doctors = doctorsResponse.items || doctorsResponse.data?.items || [];
+                    const matchedDoctor = doctors.find(d => String(d.user_id) === String(user.id));
+                    if (matchedDoctor) {
+                        currentUserDoctorId = matchedDoctor.id;
+                    }
+                } catch (error) {
+                    console.warn('查找当前用户对应的医生失败:', error);
+                }
+            }
+        }
+    } catch (error) {
+        }
+    
+    // 加载患者和医生列表
+    let patientOptions = [{ value: '', text: '请选择患者' }];
+    let doctorOptions = [{ value: '', text: '请选择医生' }];
+    
+    try {
+        // 加载患者列表
+        const patientsResponse = await PatientAPI.getList({ page: 1, page_size: 100 });
+        const patients = patientsResponse.items || patientsResponse.data?.items || [];
+        patientOptions = [
+            { value: '', text: '请选择患者' },
+            ...patients.map(p => ({ 
+                value: p.id, 
+                text: p.name || p.patient_name || '未知患者',
+                selected: patientId && String(p.id) === String(patientId)
+            }))
+        ];
+        
+        // 如果URL中有患者ID但不在列表中，添加一个选项
+        if (patientId && !patientOptions.find(opt => opt.value === patientId)) {
+            patientOptions.push({
+                value: patientId,
+                text: patientName || '未知患者',
+                selected: true
+            });
+        }
+        
+        // 加载医生列表
+        const doctorsResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+        const doctors = doctorsResponse.items || doctorsResponse.data?.items || [];
+        doctorOptions = [
+            { value: '', text: '请选择医生' },
+            ...doctors.map(d => ({ 
+                value: d.id, 
+                text: d.name || d.doctor_name || '未知医生',
+                selected: (doctorId && String(d.id) === String(doctorId)) || 
+                         (!doctorId && currentUserDoctorId && String(d.id) === String(currentUserDoctorId))
+            }))
+        ];
+        
+        // 如果URL中有医生ID但不在列表中，添加一个选项
+        if (doctorId && !doctorOptions.find(opt => opt.value === doctorId)) {
+            doctorOptions.push({
+                value: doctorId,
+                text: doctorName || '未知医生',
+                selected: true
+            });
+        }
+    } catch (error) {
+        console.error('加载患者或医生列表失败:', error);
+        utils.showToast('加载患者或医生列表失败', 'warning');
+    }
+    
+    // 确定默认医生ID：优先使用URL参数，其次使用当前登录用户的医生ID
+    const defaultDoctorId = doctorId || currentUserDoctorId || '';
+    
+    const formHtml = `
+        ${FormComponents.createSelect({
+            id: 'prescription-patient',
+            label: '患者 <span class="text-danger">*</span>',
+            name: 'patient_id',
+            required: true,
+            value: patientId || '',
+            options: patientOptions
+        })}
+        ${FormComponents.createSelect({
+            id: 'prescription-doctor',
+            label: '医生 <span class="text-danger">*</span>',
+            name: 'doctor_id',
+            required: true,
+            value: doctorId || currentUserDoctorId || '',
+            options: doctorOptions
+        })}
+        ${FormComponents.createSelect({
+            id: 'prescription-type',
+            label: '处方类型 <span class="text-danger">*</span>',
+            name: 'prescription_type',
+            required: true,
+            options: [
+                { value: 'western', text: '西医处方' },
+                { value: 'tcm', text: '中药处方' },
+                { value: 'combined', text: '中西药联合处方' }
+            ]
+        })}
+        ${medicalRecordId ? `<input type="hidden" id="prescription-medical-record-id" value="${medicalRecordId}">` : ''}
+        <div class="mb-3">
+            <label class="form-label">处方明细</label>
+            <div id="prescription-items-container">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 请先选择患者和医生，然后添加药品
+                </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-prescription-item-btn">
+                <i class="bi bi-plus-circle"></i> 添加药品
+            </button>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">总金额</label>
+            <input type="number" class="form-control" id="prescription-total-amount" name="total_amount" 
+                   value="0.00" step="0.01" readonly>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">备注</label>
+            <textarea class="form-control" id="prescription-remark" name="remark" rows="3" placeholder="请输入备注"></textarea>
+        </div>
+    `;
+    
+    await ModalComponents.showFormModal({
+        title: '新增处方',
+        formHtml: formHtml,
+        size: 'xl',
+        onShow: (modalElement) => {
+            // 绑定添加药品按钮事件（使用事件委托，确保即使DOM重新渲染也能工作）
+            const addBtn = modalElement.querySelector('#add-prescription-item-btn');
+            if (addBtn) {
+                // 移除旧的事件监听器（如果有）
+                const newAddBtn = addBtn.cloneNode(true);
+                addBtn.parentNode.replaceChild(newAddBtn, addBtn);
+                
+                // 绑定新的事件监听器
+                newAddBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.addPrescriptionItem) {
+                        await window.addPrescriptionItem();
+                    } else {
+                        console.error('addPrescriptionItem函数未定义');
+                        utils.showToast('添加药品功能未初始化，请刷新页面重试', 'warning');
+                    }
+                });
+            }
+            
+            // 如果URL中有患者和医生信息，自动填充
+            if (patientId || doctorId) {
+                setTimeout(() => {
+                    if (patientId) {
+                        const patientSelect = document.getElementById('prescription-patient');
+                        if (patientSelect) {
+                            patientSelect.value = patientId;
+                        }
+                    }
+                    if (doctorId) {
+                        const doctorSelect = document.getElementById('prescription-doctor');
+                        if (doctorSelect) {
+                            doctorSelect.value = doctorId;
+                        }
+                    }
+                }, 100);
+            }
+        },
+        onSubmit: async (data) => {
+            try {
+                if (!data.patient_id) {
+                    utils.showToast('请选择患者', 'danger');
+                    return false;
+                }
+                if (!data.doctor_id) {
+                    utils.showToast('请选择医生', 'danger');
+                    return false;
+                }
+                if (!data.prescription_type) {
+                    utils.showToast('请选择处方类型', 'danger');
+                    return false;
+                }
+                
+                // 收集处方明细
+                const items = {};
+                const itemRows = document.querySelectorAll('.prescription-item-row');
+                itemRows.forEach((row, index) => {
+                    const drugId = row.querySelector('.item-drug-id')?.value;
+                    const quantity = parseFloat(row.querySelector('.item-quantity')?.value || 0);
+                    const dosage = row.querySelector('.item-dosage')?.value || '';
+                    const price = parseFloat(row.querySelector('.item-price')?.value || 0);
+                    
+                    if (drugId && quantity > 0) {
+                        items[drugId] = {
+                            quantity: quantity,
+                            dosage: dosage,
+                            price: price,
+                            amount: price * quantity
+                        };
+                    }
+                });
+                
+                if (Object.keys(items).length === 0) {
+                    utils.showToast('请至少添加一个药品', 'danger');
+                    return false;
+                }
+                
+                // 计算总金额
+                const totalAmount = Object.values(items).reduce((sum, item) => sum + (item.amount || 0), 0);
+                
+                const prescriptionData = {
+                    patient_id: data.patient_id,
+                    doctor_id: data.doctor_id,
+                    prescription_type: data.prescription_type,
+                    items: items,
+                    total_amount: totalAmount,
+                    remark: data.remark || ''
+                };
+                
+                // 如果有病历ID，也传递
+                const medicalRecordId = document.getElementById('prescription-medical-record-id')?.value;
+                if (medicalRecordId) {
+                    prescriptionData.medical_record_id = medicalRecordId;
+                }
+                
+                await TreatmentAPI.createPrescription(prescriptionData);
+                utils.showToast('创建处方成功', 'success');
+                if (window.loadPrescriptions) {
+                    window.loadPrescriptions();
+                }
+                return true;
+            } catch (error) {
+                console.error('创建处方失败:', error);
+                const errorMsg = error.message || '创建处方失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+    
+    // 编辑处方时添加药品的函数
+    if (!window.addEditPrescriptionItem) {
+        window.addEditPrescriptionItem = async function(existingItem = null) {
+            // 加载药品列表
+            let drugOptions = [{ value: '', text: '请选择药品' }];
+            try {
+                const drugsResponse = await PharmacyAPI.getDrugs({ page: 1, page_size: 100 });
+                const drugs = drugsResponse.items || drugsResponse.data?.items || [];
+                drugOptions = [
+                    { value: '', text: '请选择药品' },
+                    ...drugs.map(d => ({ 
+                        value: d.id, 
+                        text: `${d.name || d.drug_name || '未知药品'} (${d.specification || ''})`,
+                        data: d
+                    }))
+                ];
+            } catch (error) {
+                console.error('加载药品列表失败:', error);
+                utils.showToast('加载药品列表失败', 'warning');
+            }
+            
+            const container = document.getElementById('edit-prescription-items-container');
+            if (!container) return;
+            
+            // 移除提示信息
+            const alert = container.querySelector('.alert');
+            if (alert) alert.remove();
+            
+            // 如果是编辑现有药品，使用现有数据
+            const drugId = existingItem ? (existingItem.drug_id || existingItem.id || '') : '';
+            const drugName = existingItem ? (existingItem.drug_name || existingItem.name || '') : '';
+            const selectedDrug = drugOptions.find(opt => opt.value === drugId);
+            const quantity = existingItem ? (existingItem.quantity || 1) : 1;
+            const unit = existingItem ? (existingItem.unit || '') : '';
+            const price = existingItem ? (existingItem.price || existingItem.unit_price || 0) : 0;
+            const amount = existingItem ? (existingItem.amount || price * quantity) : 0;
+            const usage = existingItem ? (existingItem.usage || existingItem.dosage || '') : '';
+            const specification = existingItem ? (existingItem.specification || '') : '';
+            
+            const itemHtml = `
+                <div class="prescription-item-row border rounded p-3 mb-2">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small">药品</label>
+                            <select class="form-select form-select-sm item-drug-id" onchange="if(window.onEditDrugSelect) window.onEditDrugSelect(this)">
+                                ${drugOptions.map(opt => `<option value="${opt.value}" ${opt.value === drugId ? 'selected' : ''} data-price="${opt.data?.price || 0}" data-unit="${opt.data?.unit || ''}" data-specification="${opt.data?.specification || ''}">${opt.text}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">数量</label>
+                            <input type="number" class="form-control form-control-sm item-quantity" value="${quantity}" min="1" onchange="if(window.calculateEditPrescriptionTotal) window.calculateEditPrescriptionTotal()">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">单位</label>
+                            <input type="text" class="form-control form-control-sm item-unit" value="${unit}" readonly>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">单价</label>
+                            <input type="number" class="form-control form-control-sm item-price" value="${price}" step="0.01" onchange="if(window.calculateEditPrescriptionTotal) window.calculateEditPrescriptionTotal()">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">金额</label>
+                            <input type="number" class="form-control form-control-sm item-amount" value="${amount}" step="0.01" readonly>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label small">用法用量</label>
+                            <input type="text" class="form-control form-control-sm item-dosage" value="${usage}" placeholder="如：1片/次，3次/日">
+                        </div>
+                        <div class="col-md-12">
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.prescription-item-row').remove(); if(window.calculateEditPrescriptionTotal) window.calculateEditPrescriptionTotal()">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.insertAdjacentHTML('beforeend', itemHtml);
+            
+            // 如果选择了药品，自动填充价格和单位
+            if (drugId && selectedDrug) {
+                const row = container.querySelector('.prescription-item-row:last-child');
+                if (row) {
+                    const priceInput = row.querySelector('.item-price');
+                    const unitInput = row.querySelector('.item-unit');
+                    if (priceInput && selectedDrug.data) {
+                        priceInput.value = selectedDrug.data.price || price || 0;
+                    }
+                    if (unitInput && selectedDrug.data) {
+                        unitInput.value = selectedDrug.data.unit || unit || '';
+                    }
+                    if (window.calculateEditPrescriptionTotal) {
+                        window.calculateEditPrescriptionTotal();
+                    }
+                }
+            }
+        };
+        
+        // 编辑处方时药品选择变化
+        window.onEditDrugSelect = function(select) {
+            const row = select.closest('.prescription-item-row');
+            const option = select.options[select.selectedIndex];
+            const price = parseFloat(option.getAttribute('data-price') || 0);
+            const unit = option.getAttribute('data-unit') || '';
+            
+            row.querySelector('.item-price').value = price;
+            row.querySelector('.item-unit').value = unit;
+            
+            if (window.calculateEditPrescriptionTotal) {
+                window.calculateEditPrescriptionTotal();
+            }
+        };
+        
+        // 编辑处方时计算总金额
+        window.calculateEditPrescriptionTotal = function() {
+            const totalInput = document.getElementById('edit-prescription-total-amount');
+            if (!totalInput) return;
+            
+            let total = 0;
+            document.querySelectorAll('#edit-prescription-items-container .prescription-item-row').forEach(row => {
+                const quantity = parseFloat(row.querySelector('.item-quantity')?.value || 0);
+                const price = parseFloat(row.querySelector('.item-price')?.value || 0);
+                const amount = quantity * price;
+                
+                row.querySelector('.item-amount').value = amount.toFixed(2);
+                total += amount;
+            });
+            
+            totalInput.value = total.toFixed(2);
+        };
+    }
+};
+
+// 编辑处方（挂载到全局作用域）
+window.editPrescription = async function(id) {
+    try {
+        const response = await TreatmentAPI.getPrescriptionDetail(id);
+        const prescription = response.data || response;
+        
+        if (!prescription) {
+            utils.showToast('获取处方详情失败', 'danger');
+            return;
+        }
+        
+        // 加载患者和医生列表
+        let patientOptions = [{ value: '', text: '请选择患者' }];
+        let doctorOptions = [{ value: '', text: '请选择医生' }];
+        
+        try {
+            const patientsResponse = await PatientAPI.getList({ page: 1, page_size: 100 });
+            const patients = patientsResponse.items || patientsResponse.data?.items || [];
+            patientOptions = [
+                { value: '', text: '请选择患者' },
+                ...patients.map(p => ({ value: p.id, text: p.name || p.patient_name || '未知患者' }))
+            ];
+            
+            const doctorsResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+            const doctors = doctorsResponse.items || doctorsResponse.data?.items || [];
+            doctorOptions = [
+                { value: '', text: '请选择医生' },
+                ...doctors.map(d => ({ value: d.id, text: d.name || d.doctor_name || '未知医生' }))
+            ];
+        } catch (error) {
+            console.error('加载患者或医生列表失败:', error);
+        }
+        
+        const formHtml = `
+            ${FormComponents.createSelect({
+                id: 'edit-prescription-patient',
+                label: '患者 <span class="text-danger">*</span>',
+                name: 'patient_id',
+                value: prescription.patient_id || '',
+                required: true,
+                options: patientOptions
+            })}
+            ${FormComponents.createSelect({
+                id: 'edit-prescription-doctor',
+                label: '医生 <span class="text-danger">*</span>',
+                name: 'doctor_id',
+                value: prescription.doctor_id || '',
+                required: true,
+                options: doctorOptions
+            })}
+            ${FormComponents.createSelect({
+                id: 'edit-prescription-type',
+                label: '处方类型 <span class="text-danger">*</span>',
+                name: 'prescription_type',
+                value: prescription.prescription_type || 'western',
+                required: true,
+                options: [
+                    { value: 'western', text: '西医处方' },
+                    { value: 'tcm', text: '中药处方' },
+                    { value: 'combined', text: '中西药联合处方' }
+                ]
+            })}
+            <div class="mb-3">
+                <label class="form-label">处方明细</label>
+                <div id="edit-prescription-items-container">
+                    <!-- 药品明细将通过JavaScript动态添加 -->
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-edit-prescription-item-btn">
+                    <i class="bi bi-plus-circle"></i> 添加药品
+                </button>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">总金额</label>
+                <input type="number" class="form-control" id="edit-prescription-total-amount" name="total_amount" 
+                       value="${prescription.total_amount || 0}" step="0.01" readonly>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">备注</label>
+                <textarea class="form-control" id="edit-prescription-remark" name="remark" rows="3" placeholder="请输入备注">${prescription.remark || ''}</textarea>
+            </div>
+        `;
+        
+        await ModalComponents.showFormModal({
+            title: '编辑处方',
+            formHtml: formHtml,
+            size: 'xl',
+            onShow: (modalElement) => {
+                // 绑定添加药品按钮事件（使用事件委托，确保即使DOM重新渲染也能工作）
+                const addBtn = modalElement.querySelector('#add-edit-prescription-item-btn');
+                if (addBtn) {
+                    // 移除旧的事件监听器（如果有）
+                    const newAddBtn = addBtn.cloneNode(true);
+                    addBtn.parentNode.replaceChild(newAddBtn, addBtn);
+                    
+                    // 绑定新的事件监听器
+                    newAddBtn.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (window.addEditPrescriptionItem) {
+                            await window.addEditPrescriptionItem();
+                        } else {
+                            console.error('addEditPrescriptionItem函数未定义');
+                            utils.showToast('添加药品功能未初始化，请刷新页面重试', 'warning');
+                        }
+                    });
+                }
+                
+                // 加载现有药品明细
+                setTimeout(async () => {
+                    const items = prescription.items || [];
+                    const container = document.getElementById('edit-prescription-items-container');
+                    if (container) {
+                        // 确保items是数组格式
+                        let itemsArray = [];
+                        if (Array.isArray(items)) {
+                            itemsArray = items;
+                        } else if (typeof items === 'object' && items !== null) {
+                            // 如果是对象/字典格式，转换为数组
+                            itemsArray = Object.entries(items).map(([drug_id, item_data]) => {
+                                if (typeof item_data === 'object' && item_data !== null) {
+                                    return {
+                                        drug_id: drug_id,
+                                        drug_name: item_data.drug_name || item_data.name || '',
+                                        specification: item_data.specification || '',
+                                        quantity: item_data.quantity || 0,
+                                        unit: item_data.unit || '',
+                                        usage: item_data.usage || item_data.dosage || '',
+                                        price: item_data.price || item_data.unit_price || 0,
+                                        amount: item_data.amount || ((item_data.price || item_data.unit_price || 0) * (item_data.quantity || 0))
+                                    };
+                                }
+                                return null;
+                            }).filter(item => item !== null);
+                        }
+                        
+                        if (itemsArray.length > 0) {
+                            for (const item of itemsArray) {
+                                if (window.addEditPrescriptionItem) {
+                                    await window.addEditPrescriptionItem(item);
+                                }
+                            }
+                        }
+                    }
+                }, 200);
+            },
+            onSubmit: async (data) => {
+                try {
+                    // 收集处方明细
+                    const items = {};
+                    const itemRows = document.querySelectorAll('#edit-prescription-items-container .prescription-item-row');
+                    itemRows.forEach((row) => {
+                        const drugId = row.querySelector('.item-drug-id')?.value;
+                        const quantity = parseFloat(row.querySelector('.item-quantity')?.value || 0);
+                        const dosage = row.querySelector('.item-dosage')?.value || '';
+                        const price = parseFloat(row.querySelector('.item-price')?.value || 0);
+                        const unit = row.querySelector('.item-unit')?.value || '';
+                        const drugSelect = row.querySelector('.item-drug-id');
+                        const selectedOption = drugSelect ? drugSelect.options[drugSelect.selectedIndex] : null;
+                        const drugName = selectedOption ? selectedOption.text.split(' (')[0] : '';
+                        const specification = selectedOption ? selectedOption.getAttribute('data-specification') || '' : '';
+                        
+                        if (drugId && quantity > 0) {
+                            items[drugId] = {
+                                drug_name: drugName,
+                                specification: specification,
+                                quantity: quantity,
+                                unit: unit,
+                                usage: dosage,
+                                dosage: dosage,
+                                price: price,
+                                unit_price: price,
+                                amount: price * quantity
+                            };
+                        }
+                    });
+                    
+                    if (Object.keys(items).length === 0) {
+                        utils.showToast('请至少添加一个药品', 'danger');
+                        return false;
+                    }
+                    
+                    // 计算总金额
+                    const totalAmount = Object.values(items).reduce((sum, item) => sum + (item.amount || 0), 0);
+                    
+                    const prescriptionData = {
+                        items: items,
+                        total_amount: totalAmount,
+                        remark: data.remark || ''
+                    };
+                    
+                    await TreatmentAPI.updatePrescription(id, prescriptionData);
+                    utils.showToast('更新处方成功', 'success');
+                    if (window.loadPrescriptions) {
+                        window.loadPrescriptions();
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('更新处方失败:', error);
+                    const errorMsg = error.message || '更新处方失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('加载处方信息失败:', error);
+        utils.showToast('加载处方信息失败', 'danger');
+    }
+};
+</script>
+

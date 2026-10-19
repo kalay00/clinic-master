@@ -1,0 +1,721 @@
+<!-- 诊疗管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">诊疗管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-hospital"></i> 诊疗管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-info" onclick="app.navigate('prescriptions')">
+        <i class="bi bi-prescription"></i> 处方管理
+    </button>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 挂号列表（已缴费） -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">待就诊患者列表（已缴费）</h5>
+    </div>
+    <div class="card-body">
+        <div id="medical-records-table-container"></div>
+        <div id="medical-records-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<!-- 已就诊患者列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">已就诊患者列表（最近7日）</h5>
+    </div>
+    <div class="card-body">
+        <div id="visited-patients-table-container"></div>
+        <div id="visited-patients-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+// 挂载到全局作用域
+window.pageInit = function() {
+    window.initSearchBar();
+    window.loadMedicalRecords();
+    window.loadVisitedPatients();
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'record-search',
+        placeholder: '请输入患者姓名、病历号搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            loadMedicalRecords();
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'type-filter',
+                label: '类型',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'western', text: '西医' },
+                    { value: 'tcm', text: '中医' },
+                    { value: 'combined', text: '中西医结合' }
+                ]
+            }
+        ]
+    });
+}
+
+// 加载已缴费的挂号列表（挂载到全局作用域）
+window.loadMedicalRecords = async function() {
+    const container = document.getElementById('medical-records-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 获取当前登录用户信息，确定医生ID
+        let currentDoctorId = null;
+        try {
+            const userResponse = await UserAPI.getCurrentUserInfo();
+            const currentUser = userResponse.data;
+            if (currentUser && currentUser.id) {
+                // 获取医生信息
+                const doctorsResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+                const doctors = doctorsResponse.data?.items || doctorsResponse.items || [];
+                const currentDoctor = doctors.find(d => d.user_id === currentUser.id);
+                if (currentDoctor) {
+                    currentDoctorId = currentDoctor.id;
+                }
+            }
+        } catch (e) {
+            console.warn('获取当前医生信息失败:', e);
+        }
+        
+        // 调用挂号列表API，筛选已缴费且待就诊的挂号
+        const response = await RegistrationAPI.getList({
+            page: currentPage,
+            page_size: pageSize,
+            keyword: searchKeyword,
+            doctor_id: currentDoctorId, // 只显示当前医生的挂号
+            status: 'pending', // 只显示待就诊的
+            payment_status: 'paid' // 只显示已缴费的
+        });
+        
+        // 处理后端响应格式
+        let items = [];
+        let pagination = {};
+        
+        if (response && response.items) {
+            items = response.items || [];
+            pagination = response.pagination || {};
+        } else if (response && response.data) {
+            items = response.data.items || [];
+            pagination = response.data.pagination || {};
+        } else if (Array.isArray(response)) {
+            items = response;
+        }
+        
+        // 过滤已缴费的挂号（双重检查）
+        items = items.filter(item => {
+            const paymentStatus = item.payment_status || 'unpaid';
+            const price = parseFloat(item.price || 0);
+            const paidAmount = parseFloat(item.paid_amount || 0);
+            return paymentStatus === 'paid' || (price > 0 && paidAmount >= price);
+        });
+        
+        const mockData = {
+            items: items,
+            total: pagination.total || items.length,
+            page: pagination.page || currentPage,
+            page_size: pagination.page_size || pageSize,
+            total_pages: pagination.pages || Math.ceil((pagination.total || items.length) / pageSize)
+        };
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'medical-records-table',
+            columns: [
+                {
+                    title: '序号',
+                    key: 'index',
+                    align: 'center',
+                    width: '80px',
+                    render: (row, index) => {
+                        return (mockData.page - 1) * mockData.page_size + index + 1;
+                    }
+                },
+                {
+                    title: '挂号单号',
+                    key: 'registration_no',
+                    align: 'center',
+                    render: (row) => {
+                        const recordNo = row.registration_no || '-';
+                        return recordNo;
+                    }
+                },
+                {
+                    title: '患者姓名',
+                    key: 'patient_name',
+                    align: 'center',
+                    render: (row) => row.patient_name || '-'
+                },
+                {
+                    title: '预约时间',
+                    key: 'appointment_time',
+                    align: 'center',
+                    render: (row) => {
+                        const time = row.appointment_time || row.registration_date || row.registration_time;
+                        if (!time) return '-';
+                        try {
+                            const date = new Date(time);
+                            if (isNaN(date.getTime())) return time;
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            return `${year}-${month}-${day} ${hours}:${minutes}`;
+                        } catch (e) {
+                            return time;
+                        }
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => `
+                        <button class="btn btn-sm btn-primary" onclick="createMedicalRecordFromRegistration('${row.id}')">
+                            <i class="bi bi-file-earmark-medical"></i> 新建病历
+                        </button>
+                    `
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无待就诊患者'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('medical-records-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    loadMedicalRecords();
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载挂号列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载挂号列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 从挂号记录创建病历（挂载到全局作用域）
+window.createMedicalRecordFromRegistration = function(registrationId) {
+    // 使用SPA路由跳转到病历编辑页面，传递挂号ID
+    if (window.app && window.app.navigate) {
+        window.app.navigate(`treatments/edit?registration_id=${registrationId}`);
+    } else {
+        window.location.href = `/views/treatments/edit.html?registration_id=${registrationId}`;
+    }
+}
+
+// 加载已就诊患者列表（最近7日内）（挂载到全局作用域）
+window.loadVisitedPatients = async function() {
+    const container = document.getElementById('visited-patients-table-container');
+    if (!container) {
+        console.warn('visited-patients-table-container元素未找到，跳过加载');
+        return;
+    }
+    
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 获取当前登录用户信息，确定医生ID
+        let currentDoctorId = null;
+        try {
+            const userResponse = await UserAPI.getCurrentUserInfo();
+            const currentUser = userResponse.data;
+            if (currentUser && currentUser.id) {
+                // 获取医生信息
+                const doctorsResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+                const doctors = doctorsResponse.data?.items || doctorsResponse.items || [];
+                const currentDoctor = doctors.find(d => d.user_id === currentUser.id);
+                if (currentDoctor) {
+                    currentDoctorId = currentDoctor.id;
+                }
+            }
+        } catch (e) {
+            console.warn('获取当前医生信息失败:', e);
+        }
+        
+        // 计算最近7日的日期范围
+        const today = new Date();
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        
+        const startDate = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+        const endDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        // 调用病历列表API，筛选最近7日内的病历记录
+        const response = await TreatmentAPI.getMedicalRecords({
+            page: 1,
+            page_size: 1000, // 获取足够多的记录以便分组
+            doctor_id: currentDoctorId, // 只显示当前医生的病历
+            start_date: startDate,
+            end_date: endDate
+        });
+        
+        // 处理后端响应格式
+        let items = [];
+        if (response && response.items) {
+            items = response.items || [];
+        } else if (response && response.data) {
+            items = response.data.items || [];
+        } else if (Array.isArray(response)) {
+            items = response;
+        }
+        
+        // 直接使用所有病历记录，不按患者分组（同一个患者有多个就诊记录则显示多次）
+        // 按创建时间倒序排列（最新的在前）
+        const patientList = items.sort((a, b) => {
+            const dateA = new Date(a.created_at || 0);
+            const dateB = new Date(b.created_at || 0);
+            return dateB - dateA;
+        });
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'visited-patients-table',
+            columns: [
+                {
+                    title: '序号',
+                    key: 'index',
+                    align: 'center',
+                    width: '80px',
+                    render: (row, index) => index + 1
+                },
+                {
+                    title: '病历号',
+                    key: 'registration_no',
+                    align: 'center',
+                    render: (row) => {
+                        const recordNo = row.registration_no || row.patient_no || '-';
+                        return recordNo;
+                    }
+                },
+                {
+                    title: '患者姓名',
+                    key: 'patient_name',
+                    align: 'center',
+                    render: (row) => row.patient_name || '-'
+                },
+                {
+                    title: '就诊时间',
+                    key: 'created_at',
+                    align: 'center',
+                    render: (row) => {
+                        const time = row.created_at;
+                        if (!time) return '-';
+                        try {
+                            const date = new Date(time);
+                            if (isNaN(date.getTime())) return time;
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            return `${year}-${month}-${day} ${hours}:${minutes}`;
+                        } catch (e) {
+                            return time;
+                        }
+                    }
+                },
+                {
+                    title: '诊断',
+                    key: 'diagnosis',
+                    align: 'center',
+                    render: (row) => row.diagnosis || row.western_diagnosis || '-'
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => `
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewMedicalRecord('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>
+                    `
+                }
+            ],
+            data: patientList,
+            emptyText: '最近7日内暂无就诊患者'
+        });
+        
+        // 不需要分页（显示所有最近7日的患者）
+        const paginationContainer = document.getElementById('visited-patients-pagination-container');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载已就诊患者列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载已就诊患者列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示新增病历弹窗（挂载到全局作用域）
+window.showAddMedicalRecordModal = async function() {
+    // 使用SPA路由跳转到病历编辑页面
+    if (window.app && window.app.navigate) {
+        window.app.navigate('treatments/edit');
+    } else {
+        // 降级方案：直接跳转
+        window.location.href = '/views/treatments/edit.html';
+    }
+};
+
+// 查看病历详情（挂载到全局作用域）
+window.viewMedicalRecord = function(id) {
+    // 使用SPA路由
+    if (window.app && window.app.navigate) {
+        window.app.navigate(`treatments/detail?id=${id}`);
+    } else {
+        // 降级方案：直接跳转
+        window.location.href = `/views/treatments/detail.html?id=${id}`;
+    }
+};
+
+// 编辑病历（挂载到全局作用域）
+window.editMedicalRecord = function(id) {
+    // 使用SPA路由
+    if (window.app && window.app.navigate) {
+        window.app.navigate(`treatments/edit?id=${id}`);
+    } else {
+        // 降级方案：直接跳转
+        window.location.href = `/views/treatments/edit.html?id=${id}`;
+    }
+};
+
+// 打印病历（挂载到全局作用域）
+window.printMedicalRecord = async function(id) {
+    try {
+        // 加载打印模板列表
+        let printTemplates = [];
+        let selectedTemplateId = null;
+        
+        try {
+            const templateResponse = await PrintTemplateAPI.getList({
+                page: 1,
+                page_size: 100,
+                type: 'medical_record'
+            });
+            
+            let items = [];
+            if (templateResponse && templateResponse.data) {
+                items = templateResponse.data.items || [];
+            } else if (templateResponse && templateResponse.items) {
+                items = templateResponse.items || [];
+            }
+            
+            printTemplates = items;
+            
+            // 如果有模板，显示选择对话框
+            if (printTemplates.length > 0) {
+                const templateOptions = printTemplates.map(t => ({
+                    value: t.id,
+                    text: t.name + (t.is_default ? ' (默认)' : ''),
+                    selected: t.is_default
+                }));
+                
+                if (templateOptions.some(opt => opt.selected)) {
+                    selectedTemplateId = templateOptions.find(opt => opt.selected).value;
+                }
+                
+                // 使用showFormModal创建选择对话框
+                const formHtml = `
+                    <div class="mb-3">
+                        <label class="form-label">选择打印模板</label>
+                        <select class="form-select" id="template-select-modal">
+                            <option value="">使用默认模板</option>
+                            ${templateOptions.map(opt => `
+                                <option value="${opt.value}" ${opt.selected ? 'selected' : ''}>${opt.text}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                `;
+                
+                // 创建一个Promise来等待用户选择
+                const templateSelected = await new Promise((resolve) => {
+                    const modalId = `template-select-modal-${Date.now()}`;
+                    const modalHtml = `
+                        <div class="modal fade" id="${modalId}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">选择打印模板</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        ${formHtml}
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                        <button type="button" class="btn btn-primary" id="confirm-template-select">确定</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    const modalContainer = document.getElementById('modal-container') || (() => {
+                        const container = document.createElement('div');
+                        container.id = 'modal-container';
+                        document.body.appendChild(container);
+                        return container;
+                    })();
+                    
+                    modalContainer.insertAdjacentHTML('beforeend', modalHtml);
+                    const modalElement = document.getElementById(modalId);
+                    const modal = new bootstrap.Modal(modalElement);
+                    
+                    document.getElementById('confirm-template-select').addEventListener('click', () => {
+                        const select = document.getElementById('template-select-modal');
+                        const value = select ? select.value || null : null;
+                        modal.hide();
+                        modalElement.remove();
+                        resolve(value);
+                    });
+                    
+                    modalElement.addEventListener('hidden.bs.modal', () => {
+                        modalElement.remove();
+                        resolve(null);
+                    });
+                    
+                    modal.show();
+                });
+                
+                if (templateSelected === null) {
+                    return; // 用户取消
+                }
+                
+                selectedTemplateId = templateSelected;
+            }
+            
+            // 如果选择了模板，使用模板打印
+            if (selectedTemplateId) {
+                const previewResponse = await PrintTemplateAPI.preview(selectedTemplateId, {
+                    data_type: 'medical_record',
+                    data_id: id
+                });
+                
+                let html = '';
+                if (previewResponse && previewResponse.data && previewResponse.data.html) {
+                    html = previewResponse.data.html;
+                } else if (previewResponse && previewResponse.html) {
+                    html = previewResponse.html;
+                }
+                
+                if (html) {
+                    const printWindow = window.open('', '_blank');
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                    printWindow.onload = function() {
+                        printWindow.print();
+                    };
+                    return;
+                }
+            }
+        } catch (templateError) {
+            console.warn('加载打印模板失败，使用默认打印:', templateError);
+            // 继续使用默认打印
+        }
+        
+        // 使用默认打印
+        // 获取病历详情
+        const response = await TreatmentAPI.getMedicalRecordDetail(id);
+        // API返回格式：{code: 200, data: {...}}，需要提取data字段
+        const record = response.data || response;
+        
+        if (!record || !record.id) {
+            utils.showToast('获取病历详情失败', 'danger');
+            return;
+        }
+        
+        // 打开新窗口显示打印内容
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>病历打印</title>
+                <meta charset="UTF-8">
+                <style>
+                    body {
+                        font-family: "Microsoft YaHei", Arial, sans-serif;
+                        padding: 20px;
+                        line-height: 1.6;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 2px solid #000;
+                        padding-bottom: 10px;
+                    }
+                    .header h1 {
+                        margin: 0;
+                        font-size: 24px;
+                    }
+                    .section {
+                        margin-bottom: 20px;
+                    }
+                    .section-title {
+                        font-weight: bold;
+                        font-size: 16px;
+                        margin-bottom: 10px;
+                        border-left: 4px solid #007bff;
+                        padding-left: 10px;
+                    }
+                    .section-content {
+                        padding-left: 20px;
+                        white-space: pre-wrap;
+                    }
+                    .info-row {
+                        display: flex;
+                        margin-bottom: 10px;
+                    }
+                    .info-label {
+                        width: 100px;
+                        font-weight: bold;
+                    }
+                    .info-value {
+                        flex: 1;
+                    }
+                    @media print {
+                        body { margin: 0; padding: 15px; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>门诊病历</h1>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">患者信息</div>
+                    <div class="section-content">
+                        <div class="info-row">
+                            <div class="info-label">患者姓名：</div>
+                            <div class="info-value">${record.patient_name || '-'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">病历号：</div>
+                            <div class="info-value">${record.registration_no || record.patient_no || '-'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">就诊时间：</div>
+                            <div class="info-value">${record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">医生信息</div>
+                    <div class="section-content">
+                        <div class="info-row">
+                            <div class="info-label">医生：</div>
+                            <div class="info-value">${record.doctor_name || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">主诉</div>
+                    <div class="section-content">${record.chief_complaint || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">现病史</div>
+                    <div class="section-content">${record.present_illness || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">既往史</div>
+                    <div class="section-content">${record.past_history || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">体格检查</div>
+                    <div class="section-content">${record.physical_examination || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">诊断</div>
+                    <div class="section-content">${record.diagnosis || record.western_diagnosis || record.tcm_syndrome || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">治疗方案</div>
+                    <div class="section-content">${record.treatment_plan || '-'}</div>
+                </div>
+                
+                ${record.remark ? `
+                <div class="section">
+                    <div class="section-title">备注</div>
+                    <div class="section-content">${record.remark}</div>
+                </div>
+                ` : ''}
+                
+                <div style="margin-top: 40px; text-align: right;">
+                    <div>医生签名：${record.doctor_name || ''}</div>
+                    <div>日期：${record.created_at ? new Date(record.created_at).toLocaleDateString('zh-CN') : ''}</div>
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    };
+                <\/script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    } catch (error) {
+        console.error('打印病历失败:', error);
+        utils.showToast('打印病历失败: ' + (error.message || '未知错误'), 'danger');
+    }
+};
+</script>
+

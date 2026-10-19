@@ -1,0 +1,485 @@
+<!-- 科室管理页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="if(window.app && window.app.navigate) { window.app.navigate('dashboard'); } else { window.location.href='/index.html'; }">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="if(window.app && window.app.navigate) { window.app.navigate('system'); } else { window.location.href='/views/system/users.html'; }">系统管理</a></li>
+            <li class="breadcrumb-item active">科室管理</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-building"></i> 科室管理</h1>
+        <button type="button" class="btn btn-primary" onclick="window.showAddDepartmentModal()">
+            <i class="bi bi-plus-circle"></i> 新增科室
+        </button>
+    </div>
+</div>
+
+<!-- 搜索栏 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label for="search-keyword" class="form-label">搜索关键词</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="search-keyword" placeholder="请输入科室名称或编码">
+                    <button class="btn btn-outline-secondary" type="button" onclick="window.searchDepartments()">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                    <button class="btn btn-outline-secondary" type="button" onclick="window.resetSearch()">
+                        <i class="bi bi-x-circle"></i> 重置
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 科室列表 -->
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-list-ul"></i> 科室列表</h5>
+            <div class="text-muted small">
+                <span id="department-count">共 <strong>0</strong> 条记录</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="departments-table-container">
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <p class="mt-2 text-muted">正在加载数据...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 搜索关键词
+let searchKeyword = '';
+
+// 页面初始化
+window.pageInit = function() {
+    window.loadDepartments();
+    
+    // 绑定搜索框回车事件
+    const searchInput = document.getElementById('search-keyword');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                window.searchDepartments();
+            }
+        });
+    }
+};
+
+// 加载科室列表（挂载到全局作用域）
+window.loadDepartments = async function() {
+    const container = document.getElementById('departments-table-container');
+    if (!container) return;
+    
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API
+        const response = await DepartmentAPI.getList({
+            page: 1,
+            page_size: 100,
+            keyword: searchKeyword
+        });
+        
+        // 处理后端响应格式
+        // ApiClient.request返回的是data.data（即后端响应的data字段）
+        // 后端返回格式: {code: 200, message: "success", data: {items: [], pagination: {}}}
+        // 所以response应该是: {items: [], pagination: {}}
+        let departments = [];
+        let pagination = null;
+        
+        if (response) {
+            // 如果response是对象，尝试获取items
+            if (response.items && Array.isArray(response.items)) {
+                departments = response.items;
+                pagination = response.pagination;
+            } else if (response.data && response.data.items && Array.isArray(response.data.items)) {
+                // 兼容嵌套格式
+                departments = response.data.items;
+                pagination = response.data.pagination;
+            } else if (Array.isArray(response)) {
+                // 如果response本身就是数组
+                departments = response;
+            }
+        }
+        
+        // 更新记录数
+        const countElement = document.getElementById('department-count');
+        if (countElement && pagination) {
+            countElement.innerHTML = `共 <strong>${pagination.total || departments.length}</strong> 条记录`;
+        } else if (countElement) {
+            countElement.innerHTML = `共 <strong>${departments.length}</strong> 条记录`;
+        }
+        
+        // 渲染表格
+        if (departments.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="mt-3 text-muted">暂无科室数据</p>
+                    <button type="button" class="btn btn-primary mt-2" onclick="window.showAddDepartmentModal()">
+                        <i class="bi bi-plus-circle"></i> 新增科室
+                    </button>
+                </div>
+            `;
+        } else {
+            container.innerHTML = TableComponents.renderTable({
+                id: 'departments-table',
+                columns: [
+                    {
+                        title: '序号',
+                        key: 'index',
+                        align: 'center',
+                        width: '60px',
+                        render: (row, index) => index + 1
+                    },
+                    {
+                        title: '科室名称',
+                        key: 'name',
+                        align: 'left',
+                        render: (row) => `<strong>${row.name || '-'}</strong>`
+                    },
+                    {
+                        title: '科室编码',
+                        key: 'code',
+                        align: 'center',
+                        render: (row) => `<span class="badge bg-secondary">${row.code || '-'}</span>`
+                    },
+                    {
+                        title: '描述',
+                        key: 'description',
+                        align: 'left',
+                        render: (row) => {
+                            const desc = row.description || '-';
+                            return desc.length > 50 ? desc.substring(0, 50) + '...' : desc;
+                        }
+                    },
+                    {
+                        title: '医生数量',
+                        key: 'doctor_count',
+                        align: 'center',
+                        render: (row) => {
+                            const count = row.doctor_count || 0;
+                            return `<span class="badge bg-info">${count}</span>`;
+                        }
+                    },
+                    {
+                        title: '状态',
+                        key: 'status',
+                        align: 'center',
+                        render: (row) => {
+                            const statusClass = row.status === 'active' ? 'success' : 'danger';
+                            const statusText = row.status === 'active' ? '启用' : '禁用';
+                            return `<span class="badge bg-${statusClass}">${statusText}</span>`;
+                        }
+                    },
+                    {
+                        title: '创建时间',
+                        key: 'created_at',
+                        align: 'center',
+                        render: (row) => {
+                            if (!row.created_at) return '-';
+                            try {
+                                const date = new Date(row.created_at);
+                                if (isNaN(date.getTime())) {
+                                    // 如果已经是 YYYY-MM-DD 格式，直接返回日期部分
+                                    if (typeof row.created_at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.created_at)) {
+                                        return row.created_at.split('T')[0].split(' ')[0];
+                                    }
+                                    return row.created_at;
+                                }
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                return `${year}-${month}-${day}`;
+                            } catch (e) {
+                                return row.created_at;
+                            }
+                        }
+                    },
+                    {
+                        title: '操作',
+                        key: 'actions',
+                        align: 'center',
+                        width: '180px',
+                        render: (row) => `
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="window.editDepartment('${row.id}')" title="编辑">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="window.deleteDepartment('${row.id}')" title="删除">
+                                    <i class="bi bi-trash"></i> 删除
+                                </button>
+                            </div>
+                        `
+                    }
+                ],
+                data: departments,
+                emptyText: '暂无科室数据',
+                striped: true,
+                hover: true
+            });
+        }
+        
+    } catch (error) {
+        console.error('加载科室列表失败:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger" role="alert">
+                <h5 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> 加载失败</h5>
+                <p>${error.message || '未知错误'}</p>
+                <hr>
+                <button class="btn btn-primary" onclick="window.loadDepartments()">
+                    <i class="bi bi-arrow-clockwise"></i> 重试
+                </button>
+            </div>
+        `;
+        utils.showToast('加载科室列表失败: ' + (error.message || '未知错误'), 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 搜索科室（挂载到全局作用域）
+window.searchDepartments = function() {
+    const keywordInput = document.getElementById('search-keyword');
+    if (keywordInput) {
+        searchKeyword = keywordInput.value.trim();
+    }
+    window.loadDepartments();
+}
+
+// 重置搜索（挂载到全局作用域）
+window.resetSearch = function() {
+    searchKeyword = '';
+    const keywordInput = document.getElementById('search-keyword');
+    if (keywordInput) {
+        keywordInput.value = '';
+    }
+    window.loadDepartments();
+}
+
+// 显示新增科室弹窗（挂载到全局作用域）
+window.showAddDepartmentModal = async function() {
+    const formHtml = `
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                ${FormComponents.createInput({
+                    id: 'department-name',
+                    label: '科室名称',
+                    name: 'name',
+                    required: true,
+                    placeholder: '请输入科室名称，如：内科、外科'
+                })}
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                ${FormComponents.createInput({
+                    id: 'department-code',
+                    label: '科室编码',
+                    name: 'code',
+                    required: true,
+                    placeholder: '请输入科室编码（英文大写，如：INTERNAL）',
+                    helpText: '编码创建后不可修改，建议使用英文大写字母'
+                })}
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                ${FormComponents.createTextarea({
+                    id: 'department-description',
+                    label: '科室描述',
+                    name: 'description',
+                    rows: 3,
+                    placeholder: '请输入科室描述（可选）'
+                })}
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                ${FormComponents.createSelect({
+                    id: 'department-status',
+                    label: '状态',
+                    name: 'status',
+                    value: 'active',
+                    options: [
+                        { value: 'active', text: '启用' },
+                        { value: 'inactive', text: '禁用' }
+                    ],
+                    helpText: '选择科室的启用状态'
+                })}
+            </div>
+        </div>
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '<i class="bi bi-plus-circle"></i> 新增科室',
+        formHtml: formHtml,
+        size: 'lg',
+        onSubmit: async (data) => {
+            try {
+                // 验证必填字段
+                if (!data.name || !data.name.trim()) {
+                    utils.showToast('请输入科室名称', 'warning');
+                    return false;
+                }
+                if (!data.code || !data.code.trim()) {
+                    utils.showToast('请输入科室编码', 'warning');
+                    return false;
+                }
+                
+                // 确保编码为大写
+                if (data.code) {
+                    data.code = data.code.toUpperCase().trim();
+                }
+                
+                // 验证编码格式（只允许字母、数字、下划线）
+                const codePattern = /^[A-Z0-9_]+$/;
+                if (!codePattern.test(data.code)) {
+                    utils.showToast('科室编码只能包含大写字母、数字和下划线', 'warning');
+                    return false;
+                }
+                
+                const response = await DepartmentAPI.create(data);
+                utils.showToast('新增科室成功', 'success');
+                window.loadDepartments();
+                return true;
+            } catch (error) {
+                console.error('新增科室失败:', error);
+                const errorMsg = error.message || error.data?.message || '新增科室失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 编辑科室（挂载到全局作用域）
+window.editDepartment = async function(id) {
+    try {
+        const response = await DepartmentAPI.getDetail(id);
+        const department = response.data || response;
+        
+        if (!department) {
+            utils.showToast('获取科室详情失败', 'danger');
+            return;
+        }
+        
+        const formHtml = `
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    ${FormComponents.createInput({
+                        id: 'edit-department-name',
+                        label: '科室名称',
+                        name: 'name',
+                        value: department.name || '',
+                        required: true,
+                        placeholder: '请输入科室名称'
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    ${FormComponents.createInput({
+                        id: 'edit-department-code',
+                        label: '科室编码',
+                        name: 'code',
+                        value: department.code || '',
+                        readonly: true,
+                        helpText: '科室编码创建后不可修改'
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    ${FormComponents.createTextarea({
+                        id: 'edit-department-description',
+                        label: '科室描述',
+                        name: 'description',
+                        value: department.description || '',
+                        rows: 3,
+                        placeholder: '请输入科室描述（可选）'
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    ${FormComponents.createSelect({
+                        id: 'edit-department-status',
+                        label: '状态',
+                        name: 'status',
+                        value: department.status || 'active',
+                        options: [
+                            { value: 'active', text: '启用' },
+                            { value: 'inactive', text: '禁用' }
+                        ],
+                        helpText: '选择科室的启用状态'
+                    })}
+                </div>
+            </div>
+        `;
+        
+        await ModalComponents.showFormModal({
+            title: '<i class="bi bi-pencil"></i> 编辑科室',
+            formHtml: formHtml,
+            size: 'lg',
+            onSubmit: async (formData) => {
+                try {
+                    // 验证必填字段
+                    if (!formData.name || !formData.name.trim()) {
+                        utils.showToast('请输入科室名称', 'warning');
+                        return false;
+                    }
+                    
+                    await DepartmentAPI.update(id, formData);
+                    utils.showToast('更新科室成功', 'success');
+                    window.loadDepartments();
+                    return true;
+                } catch (error) {
+                    console.error('更新科室失败:', error);
+                    const errorMsg = error.message || error.data?.message || '更新科室失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('获取科室详情失败:', error);
+        const errorMsg = error.message || error.data?.message || '获取科室详情失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+}
+
+// 删除科室（挂载到全局作用域）
+window.deleteDepartment = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '<i class="bi bi-exclamation-triangle text-warning"></i> 确认删除',
+        message: '确定要删除该科室吗？<br><small class="text-muted">删除后该科室下的医生将无法关联到此科室，此操作不可恢复。</small>',
+        confirmText: '<i class="bi bi-trash"></i> 删除',
+        confirmType: 'danger',
+        cancelText: '取消'
+    });
+    
+    if (confirmed) {
+        try {
+            await DepartmentAPI.delete(id);
+            utils.showToast('删除科室成功', 'success');
+            window.loadDepartments();
+        } catch (error) {
+            console.error('删除科室失败:', error);
+            const errorMsg = error.message || error.data?.message || '删除科室失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+</script>

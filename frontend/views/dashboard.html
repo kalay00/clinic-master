@@ -1,0 +1,344 @@
+<!-- 工作台页面 -->
+<div class="page-header">
+    <h1><i class="bi bi-speedometer2"></i> 工作台</h1>
+    <p class="text-muted" id="welcome-message">欢迎回来，医生</p>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value" id="todayRegistrations">0</div>
+                        <div class="stat-label">今日挂号</div>
+                    </div>
+                    <i class="bi bi-calendar-check" style="font-size: 3rem; opacity: 0.3;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stat-card success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value" id="todayVisits">0</div>
+                        <div class="stat-label">今日就诊</div>
+                    </div>
+                    <i class="bi bi-hospital" style="font-size: 3rem; opacity: 0.3;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stat-card warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value" id="todayRevenue">¥0.00</div>
+                        <div class="stat-label">今日收入</div>
+                    </div>
+                    <i class="bi bi-cash-coin" style="font-size: 3rem; opacity: 0.3;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stat-card danger">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value" id="pendingPrescriptions">0</div>
+                        <div class="stat-label">待发药</div>
+                    </div>
+                    <i class="bi bi-capsule" style="font-size: 3rem; opacity: 0.3;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 快捷操作 -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> 快捷操作</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <a href="#" class="btn btn-outline-primary w-100" onclick="app.navigate('patients')">
+                            <i class="bi bi-person-plus"></i><br>
+                            <small>新增患者</small>
+                        </a>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <a href="#" class="btn btn-outline-success w-100" onclick="app.navigate('registrations')">
+                            <i class="bi bi-calendar-plus"></i><br>
+                            <small>快速挂号</small>
+                        </a>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <a href="#" class="btn btn-outline-info w-100" onclick="app.navigate('treatments')">
+                            <i class="bi bi-file-earmark-medical"></i><br>
+                            <small>新建病历</small>
+                        </a>
+                    </div>
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <a href="#" class="btn btn-outline-warning w-100" onclick="app.navigate('payments')">
+                            <i class="bi bi-cash-stack"></i><br>
+                            <small>收费结算</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 最近就诊记录 -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> 最近就诊记录</h5>
+                <a href="#" class="btn btn-sm btn-link" onclick="app.navigate('treatments')">查看全部</a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>患者姓名</th>
+                                <th>就诊时间</th>
+                                <th>医生</th>
+                                <th>诊断</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recentVisitsTable">
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    <div class="loading-spinner"></div>
+                                    <p class="mt-2">加载中...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 工作台页面初始化
+window.pageInit = function() {
+    updateWelcomeMessage();
+    loadDashboardData();
+};
+
+// 更新欢迎消息
+function updateWelcomeMessage() {
+    try {
+        const userStr = localStorage.getItem('his_user');
+        if (userStr) {
+            const user = JSON.parse(userStr);
+            const welcomeEl = document.getElementById('welcome-message');
+            if (welcomeEl) {
+                // 获取用户姓名
+                const userName = user.real_name || user.name || user.username || '';
+                // 获取角色名称
+                const userRole = getUserRoleName(user);
+                
+                // 如果有姓名，显示"欢迎回来，姓名（角色）"，否则显示"欢迎回来，角色"
+                if (userName && userRole) {
+                    welcomeEl.textContent = `欢迎回来，${userName}（${userRole}）`;
+                } else if (userName) {
+                    welcomeEl.textContent = `欢迎回来，${userName}`;
+                } else if (userRole) {
+                    welcomeEl.textContent = `欢迎回来，${userRole}`;
+                } else {
+                    welcomeEl.textContent = '欢迎回来';
+                }
+            }
+        }
+    } catch (error) {
+        console.error('更新欢迎消息失败:', error);
+    }
+}
+
+// 获取用户角色名称
+function getUserRoleName(user) {
+    // 优先使用 role_name（如果后端直接返回）
+    if (user.role_name) {
+        return user.role_name;
+    }
+    
+    // 如果有角色数组
+    if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+        // 获取第一个角色的名称
+        const role = user.roles[0];
+        return role.name || role.role_name || role.code || null;
+    }
+    
+    // 如果有单个角色对象
+    if (user.role && typeof user.role === 'object') {
+        return user.role.name || user.role.role_name || user.role.code || null;
+    }
+    
+    // 如果有角色代码，尝试映射
+    if (user.role) {
+        const roleMap = {
+            'admin': '管理员',
+            'doctor': '医生',
+            'nurse': '护士',
+            'pharmacist': '药师',
+            'cashier': '收费员',
+            'receptionist': '前台',
+            'platform_admin': '平台管理员'
+        };
+        return roleMap[user.role] || user.role;
+    }
+    
+    return null;
+}
+
+// 加载工作台数据
+async function loadDashboardData() {
+    try {
+        // 加载统计数据
+        const today = new Date().toISOString().split('T')[0];
+        const stats = await ReportAPI.getDashboardStats({ target_date: today });
+        
+        // 更新统计数据（添加null检查）
+        const todayRegistrationsEl = document.getElementById('todayRegistrations');
+        const todayVisitsEl = document.getElementById('todayVisits');
+        const todayRevenueEl = document.getElementById('todayRevenue');
+        const pendingPrescriptionsEl = document.getElementById('pendingPrescriptions');
+        
+        if (todayRegistrationsEl) {
+            todayRegistrationsEl.textContent = stats.today_registrations || 0;
+        }
+        if (todayVisitsEl) {
+            todayVisitsEl.textContent = stats.today_visits || 0;
+        }
+        if (todayRevenueEl) {
+            // 使用utils.formatMoney如果存在，否则直接格式化
+            if (window.utils && typeof window.utils.formatMoney === 'function') {
+                todayRevenueEl.textContent = window.utils.formatMoney(stats.today_revenue || 0);
+            } else {
+                todayRevenueEl.textContent = '¥' + (stats.today_revenue || 0).toFixed(2);
+            }
+        }
+        if (pendingPrescriptionsEl) {
+            pendingPrescriptionsEl.textContent = stats.pending_prescriptions || 0;
+        }
+        
+        // 加载最近就诊记录
+        loadRecentVisits();
+    } catch (error) {
+        console.error('加载工作台数据失败:', error);
+        // 如果API失败，使用默认值（添加null检查）
+        const todayRegistrationsEl = document.getElementById('todayRegistrations');
+        const todayVisitsEl = document.getElementById('todayVisits');
+        const todayRevenueEl = document.getElementById('todayRevenue');
+        const pendingPrescriptionsEl = document.getElementById('pendingPrescriptions');
+        
+        if (todayRegistrationsEl) todayRegistrationsEl.textContent = '0';
+        if (todayVisitsEl) todayVisitsEl.textContent = '0';
+        if (todayRevenueEl) todayRevenueEl.textContent = '¥0.00';
+        if (pendingPrescriptionsEl) pendingPrescriptionsEl.textContent = '0';
+        
+        // 使用utils.showToast如果存在
+        if (window.utils && typeof window.utils.showToast === 'function') {
+            window.utils.showToast('加载数据失败', 'danger');
+        }
+    }
+}
+
+// 加载最近就诊记录
+async function loadRecentVisits() {
+    try {
+        // 调用实际API
+        const response = await TreatmentAPI.getMedicalRecords({ page: 1, page_size: 10 });
+        const visits = response.data?.items || response.items || [];
+        
+        // 查找tbody元素，如果不存在则等待或跳过
+        const tbody = document.getElementById('recentVisitsTable');
+        if (!tbody) {
+            console.warn('recentVisitsTable元素未找到，跳过加载最近就诊记录');
+            return;
+        }
+        
+        // 格式化日期时间
+        const formatDateTime = (dateStr) => {
+            if (!dateStr) return '-';
+            try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return dateStr;
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            } catch (e) {
+                return dateStr;
+            }
+        };
+        
+        if (visits.length > 0) {
+            tbody.innerHTML = visits.map(visit => {
+                const visitId = visit.id || visit.medical_record_id || '';
+                return `
+                    <tr>
+                        <td>${visit.patient_name || visit.patient?.name || '-'}</td>
+                        <td>${formatDateTime(visit.created_at || visit.visit_date)}</td>
+                        <td>${visit.doctor_name || visit.doctor?.name || '-'}</td>
+                        <td>${visit.diagnosis || visit.western_diagnosis || visit.tcm_syndrome || '-'}</td>
+                        <td><span class="badge bg-success">已完成</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="app.navigate('treatments/detail?id=${visitId}')">
+                                <i class="bi bi-eye"></i> 查看
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } else {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        <i class="bi bi-inbox" style="font-size: 2rem; opacity: 0.3;"></i>
+                        <p class="mt-2">暂无就诊记录</p>
+                    </td>
+                </tr>
+            `;
+        }
+    } catch (error) {
+        console.error('加载最近就诊记录失败:', error);
+        // 使用utils.showToast如果存在
+        if (window.utils && typeof window.utils.showToast === 'function') {
+            window.utils.showToast('加载就诊记录失败', 'danger');
+        }
+        // 如果tbody存在，显示错误信息
+        const tbody = document.getElementById('recentVisitsTable');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-danger">
+                        <p>加载失败，请刷新重试</p>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+</script>
+

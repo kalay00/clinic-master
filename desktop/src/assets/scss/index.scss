@@ -1,0 +1,504 @@
+@use './variables.scss' as *;
+@use './mixin.scss' as *;
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  touch-action: manipulation;
+}
+
+body {
+  font-family: $font-family;
+  font-size: $font-size-base;
+  color: $text-primary;
+  background-color: $bg-color-page;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: $primary-color;
+  text-decoration: none;
+  &:hover {
+    color: $primary-light-color;
+  }
+}
+
+ul,
+ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+button:not(.el-button) {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+}
+
+.app-container {
+  padding: $spacing-base;
+  height: 100%;
+  overflow: auto;
+  @include scrollbar;
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: $spacing-base;
+  color: #333;
+  padding-left: 12px;
+  border-left: 4px solid #5b7cff;
+}
+
+.page-card {
+  background: $bg-color-white;
+  border-radius: $border-radius-lg;
+  padding: $spacing-xl;
+  box-shadow: $shadow-sm;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: #909399;
+  margin-top: -8px;
+  margin-bottom: 16px;
+  padding-left: 16px;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.mt-xs { margin-top: $spacing-xs; }
+.mt-sm { margin-top: $spacing-sm; }
+.mt-md { margin-top: $spacing-md; }
+.mt-base { margin-top: $spacing-base; }
+.mt-lg { margin-top: $spacing-lg; }
+.mt-xl { margin-top: $spacing-xl; }
+
+.mb-xs { margin-bottom: $spacing-xs; }
+.mb-sm { margin-bottom: $spacing-sm; }
+.mb-md { margin-bottom: $spacing-md; }
+.mb-base { margin-bottom: $spacing-base; }
+.mb-lg { margin-bottom: $spacing-lg; }
+.mb-xl { margin-bottom: $spacing-xl; }
+
+.ml-xs { margin-left: $spacing-xs; }
+.ml-sm { margin-left: $spacing-sm; }
+.ml-md { margin-left: $spacing-md; }
+.ml-base { margin-left: $spacing-base; }
+.ml-lg { margin-left: $spacing-lg; }
+.ml-xl { margin-left: $spacing-xl; }
+
+.mr-xs { margin-right: $spacing-xs; }
+.mr-sm { margin-right: $spacing-sm; }
+.mr-md { margin-right: $spacing-md; }
+.mr-base { margin-right: $spacing-base; }
+.mr-lg { margin-right: $spacing-lg; }
+.mr-xl { margin-right: $spacing-xl; }
+
+.p-xs { padding: $spacing-xs; }
+.p-sm { padding: $spacing-sm; }
+.p-md { padding: $spacing-md; }
+.p-base { padding: $spacing-base; }
+.p-lg { padding: $spacing-lg; }
+.p-xl { padding: $spacing-xl; }
+
+// ==================== 暗色主题 ====================
+// 暗色下的 --el-* 变量由 element-plus/theme-chalk/dark/css-vars.css 提供（main.js 引入），此处不再重复定义。
+html.dark {
+  body {
+    background-color: $dark-bg-color-page;
+    color: $dark-text-primary;
+  }
+
+  .page-title {
+    color: $dark-text-primary;
+  }
+
+  .page-card {
+    background: $dark-card-bg;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  // Element Plus 暗色适配
+  .el-card {
+    background: $dark-card-bg;
+    border-color: $dark-border-color;
+    color: $dark-text-primary;
+  }
+
+  .el-form-item__label {
+    color: $dark-text-regular;
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner {
+    background: $dark-bg-color !important;
+    box-shadow: 0 0 0 1px $dark-border-color inset !important;
+    
+    .el-input__inner,
+    .el-select__input,
+    .el-textarea__inner {
+      color: $dark-text-primary;
+    }
+    
+    &:hover {
+      box-shadow: 0 0 0 1px $dark-border-color-light inset !important;
+    }
+    
+    &.is-focus {
+      box-shadow: 0 0 0 1px $primary-color inset !important;
+    }
+  }
+
+  .el-select-dropdown,
+  .el-dropdown-menu,
+  .el-dialog,
+  .el-message-box {
+    background: $dark-card-bg;
+    border-color: $dark-border-color;
+    
+    .el-select-dropdown__item,
+    .el-dropdown-menu__item {
+      color: $dark-text-regular;
+      
+      &:hover,
+      &.hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      
+      &.selected,
+      &.is-selected {
+        color: $primary-color;
+      }
+    }
+  }
+
+  .el-table {
+    background: $dark-card-bg;
+    color: $dark-text-primary;
+    
+    --el-table-header-bg-color: #{rgba(255, 255, 255, 0.05)};
+    --el-table-tr-bg-color: #{$dark-card-bg};
+    --el-table-border-color: #{$dark-border-color};
+    --el-table-row-hover-bg-color: #{rgba(64, 158, 255, 0.1)};
+    
+    th.el-table__cell {
+      background: rgba(255, 255, 255, 0.05);
+      color: $dark-text-regular;
+    }
+    
+    td.el-table__cell {
+      background: $dark-card-bg;
+    }
+  }
+
+  .el-pagination {
+    --el-pagination-bg-color: #{$dark-bg-color};
+    --el-pagination-button-bg-color: #{$dark-bg-color};
+    --el-pagination-hover-color: #{$primary-color};
+  }
+
+  .el-menu {
+    background: $dark-bg-color;
+    border-color: $dark-border-color;
+    
+    .el-menu-item,
+    .el-sub-menu__title {
+      color: $dark-text-regular;
+      
+      &:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+    }
+    
+    .el-menu-item.is-active {
+      color: $primary-color;
+    }
+  }
+
+  .el-breadcrumb__inner,
+  .el-breadcrumb__separator {
+    color: $dark-text-regular;
+  }
+
+  .el-descriptions {
+    .el-descriptions__label {
+      color: $dark-text-secondary;
+    }
+    
+    .el-descriptions__content {
+      color: $dark-text-primary;
+    }
+    
+    .el-descriptions__cell {
+      border-color: $dark-border-color;
+    }
+  }
+
+  .el-timeline-item__content {
+    color: $dark-text-primary;
+  }
+
+  .el-timeline-item__timestamp {
+    color: $dark-text-secondary;
+  }
+
+  .el-empty__description {
+    color: $dark-text-secondary;
+  }
+
+  .el-checkbox__label,
+  .el-radio__label {
+    color: $dark-text-regular;
+  }
+
+  .el-switch__core {
+    background: $dark-border-color;
+  }
+
+  .el-slider__runway {
+    background: $dark-border-color;
+  }
+
+  // 搜索栏
+  .search-bar {
+    background: $dark-card-bg;
+    border-color: $dark-border-color;
+  }
+
+  // 侧边栏
+  .sidebar-container {
+    background: $dark-sidebar-bg;
+    
+    .logo {
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .el-menu {
+      background: $dark-sidebar-bg;
+      
+      .el-menu-item,
+      .el-sub-menu__title {
+        color: $dark-text-regular;
+        
+        &:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+      }
+      
+      .el-menu-item.is-active {
+        background: $primary-color;
+        color: #fff;
+      }
+    }
+  }
+
+  // 应用主体区域
+  .app-main {
+    background: $dark-bg-color-page;
+  }
+
+  // 统计卡片
+  .stat-card {
+    .el-card__body {
+      background: $dark-card-bg;
+    }
+    
+    .stat-title {
+      color: $dark-text-secondary;
+    }
+    
+    .stat-value {
+      color: $dark-text-primary;
+    }
+  }
+
+  // 对话框
+  .el-dialog {
+    --el-dialog-bg-color: #{$dark-card-bg};
+    --el-dialog-title-font-size: 16px;
+    
+    .el-dialog__header {
+      border-bottom: 1px solid $dark-border-color;
+      
+      .el-dialog__title {
+        color: $dark-text-primary;
+      }
+    }
+    
+    .el-dialog__body {
+      color: $dark-text-primary;
+    }
+  }
+
+  // 消息提示
+  .el-message {
+    --el-message-bg-color: #{$dark-card-bg};
+    border-color: $dark-border-color;
+  }
+
+  // Tooltip
+  .el-tooltip__popper {
+    background: $dark-bg-color;
+    border-color: $dark-border-color;
+    color: $dark-text-primary;
+  }
+
+  // 下拉选择
+  .el-select-dropdown {
+    background: $dark-card-bg;
+  }
+
+  // 日期选择
+  .el-date-picker,
+  .el-date-range-picker {
+    background: $dark-card-bg;
+    border-color: $dark-border-color;
+    
+    .el-date-picker__header-label,
+    .el-date-table th,
+    .el-date-table td.available .el-date-table-cell__text {
+      color: $dark-text-regular;
+    }
+    
+    .el-date-table td.current .el-date-table-cell__text {
+      background: $primary-color;
+      color: #fff;
+    }
+    
+    .el-date-table td.today .el-date-table-cell__text {
+      color: $primary-color;
+    }
+  }
+
+  // 树形组件
+  .el-tree {
+    background: transparent;
+    color: $dark-text-regular;
+    
+    .el-tree-node__content:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .el-tree-node.is-current > .el-tree-node__content {
+      background: rgba(64, 158, 255, 0.1);
+      color: $primary-color;
+    }
+  }
+
+  // 进度条
+  .el-progress__text {
+    color: $dark-text-primary;
+  }
+
+  // 标签
+  .el-tag {
+    --el-tag-bg-color: #{rgba(255, 255, 255, 0.1)};
+    --el-tag-border-color: #{rgba(255, 255, 255, 0.2)};
+    --el-tag-text-color: #{$dark-text-regular};
+  }
+
+  .el-tag.el-tag--primary {
+    --el-tag-bg-color: #{rgba(64, 158, 255, 0.2)};
+    --el-tag-border-color: #{rgba(64, 158, 255, 0.3)};
+    --el-tag-text-color: #{$primary-light-color};
+  }
+
+  .el-tag.el-tag--success {
+    --el-tag-bg-color: #{rgba(103, 194, 58, 0.2)};
+    --el-tag-border-color: #{rgba(103, 194, 58, 0.3)};
+    --el-tag-text-color: #{$success-color};
+  }
+
+  .el-tag.el-tag--warning {
+    --el-tag-bg-color: #{rgba(230, 162, 60, 0.2)};
+    --el-tag-border-color: #{rgba(230, 162, 60, 0.3)};
+    --el-tag-text-color: #{$warning-color};
+  }
+
+  .el-tag.el-tag--danger {
+    --el-tag-bg-color: #{rgba(245, 108, 108, 0.2)};
+    --el-tag-border-color: #{rgba(245, 108, 108, 0.3)};
+    --el-tag-text-color: #{$danger-color};
+  }
+
+  // Alert
+  .el-alert {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: $dark-border-color;
+    
+    .el-alert__title,
+    .el-alert__description {
+      color: $dark-text-primary;
+    }
+  }
+
+  // Loading
+  .el-loading-mask {
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  // Popover
+  .el-popover {
+    --el-popover-bg-color: #{$dark-card-bg};
+    border-color: $dark-border-color;
+    
+    .el-popover__title {
+      color: $dark-text-primary;
+    }
+  }
+
+  // Drawer
+  .el-drawer {
+    background: $dark-card-bg;
+    
+    .el-drawer__header {
+      color: $dark-text-primary;
+      border-bottom-color: $dark-border-color;
+    }
+    
+    .el-drawer__body {
+      color: $dark-text-primary;
+    }
+  }
+}

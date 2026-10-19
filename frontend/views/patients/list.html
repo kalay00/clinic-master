@@ -1,0 +1,320 @@
+<!-- 患者管理 - 列表页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">患者管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-people"></i> 患者管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-primary" onclick="showAddPatientModal()">
+        <i class="bi bi-person-plus"></i> 新增患者
+    </button>
+    <button type="button" class="btn btn-secondary" onclick="exportPatients()">
+        <i class="bi bi-download"></i> 导出
+    </button>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 患者列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">患者列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="patients-table-container"></div>
+        <div id="patients-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+// 患者列表页面初始化
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+window.pageInit = function() {
+    window.initSearchBar();
+    window.loadPatients();
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'patient-search',
+        placeholder: '请输入患者姓名、身份证号、电话或病历号搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            loadPatients();
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'gender-filter',
+                label: '性别',
+                options: [
+                    { value: '', text: '全部' },
+                    { value: 'male', text: '男' },
+                    { value: 'female', text: '女' },
+                    { value: 'other', text: '其他' }
+                ]
+            }
+        ]
+    });
+}
+
+// 加载患者列表（挂载到全局作用域）
+window.loadPatients = async function() {
+    const container = document.getElementById('patients-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用实际API
+        const response = await PatientAPI.getList({
+            page: currentPage,
+            page_size: pageSize,
+            keyword: searchKeyword
+        });
+        
+        // 处理后端响应格式 {items: [], pagination: {total, page, page_size, pages}}
+        const mockData = {
+            items: response.items || [],
+            total: response.pagination?.total || 0,
+            page: response.pagination?.page || currentPage,
+            page_size: response.pagination?.page_size || pageSize,
+            total_pages: response.pagination?.pages || 0
+        };
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'patients-table',
+            columns: [
+                {
+                    title: '档案号',
+                    key: 'patient_no',
+                    align: 'center',
+                    render: (row) => row.patient_no || row.medical_record_no || '-'
+                },
+                {
+                    title: '姓名',
+                    key: 'name',
+                    align: 'center'
+                },
+                {
+                    title: '性别',
+                    key: 'gender',
+                    align: 'center',
+                    render: (row) => row.gender === 'male' ? '男' : row.gender === 'female' ? '女' : row.gender === 'other' ? '其他' : '-'
+                },
+                {
+                    title: '年龄',
+                    key: 'age',
+                    align: 'center',
+                    render: (row) => {
+                        if (row.age) return `${row.age}岁`;
+                        if (row.birthday || row.birth_date) {
+                            const age = window.calculateAge ? window.calculateAge(row.birthday || row.birth_date) : null;
+                            return age ? `${age}岁` : '-';
+                        }
+                        return '-';
+                    }
+                },
+                {
+                    title: '电话',
+                    key: 'phone',
+                    align: 'center'
+                },
+                {
+                    title: '身份证号',
+                    key: 'id_card',
+                    align: 'center'
+                },
+                {
+                    title: '地址',
+                    key: 'address',
+                    align: 'center',
+                    render: (row) => row.address || '-'
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => `
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewPatient('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="editPatient('${row.id}')">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deletePatient('${row.id}')">
+                            <i class="bi bi-trash"></i> 删除
+                        </button>
+                    `
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无患者数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('patients-pagination-container');
+        if (mockData.total_pages > 1 || mockData.total > mockData.page_size) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    loadPatients();
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载患者列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载患者列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示新增患者弹窗（挂载到全局作用域）
+window.showAddPatientModal = async function() {
+    const formHtml = `
+        ${FormComponents.createInput({
+            id: 'patient-name',
+            label: '姓名',
+            name: 'name',
+            required: true,
+            placeholder: '请输入患者姓名'
+        })}
+        ${FormComponents.createSelect({
+            id: 'patient-gender',
+            label: '性别',
+            name: 'gender',
+            required: true,
+            options: [
+                { value: 'male', text: '男' },
+                { value: 'female', text: '女' }
+            ]
+        })}
+        ${FormComponents.createInput({
+            id: 'patient-birthday',
+            label: '出生日期',
+            name: 'birthday',
+            type: 'date',
+            required: true
+        })}
+        ${FormComponents.createInput({
+            id: 'patient-phone',
+            label: '联系电话',
+            name: 'phone',
+            required: true,
+            placeholder: '请输入联系电话'
+        })}
+        ${FormComponents.createInput({
+            id: 'patient-id-card',
+            label: '身份证号',
+            name: 'id_card',
+            placeholder: '请输入身份证号'
+        })}
+        ${FormComponents.createTextarea({
+            id: 'patient-address',
+            label: '地址',
+            name: 'address',
+            rows: 2,
+            placeholder: '请输入地址'
+        })}
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '新增患者',
+        formHtml: formHtml,
+        size: 'lg',
+        onSubmit: async (data) => {
+            try {
+                await PatientAPI.create(data);
+                utils.showToast('新增患者成功', 'success');
+                window.loadPatients();
+                return true;
+            } catch (error) {
+                console.error('新增患者失败:', error);
+                const errorMsg = error.message || '新增患者失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 查看患者详情（挂载到全局作用域）
+window.viewPatient = function(id) {
+    // 使用SPA路由导航
+    if (window.app && window.app.navigate) {
+        window.app.navigate(`patients/detail?id=${id}`);
+    } else {
+        // 降级方案：直接跳转
+        window.location.href = `/views/patients/detail.html?id=${id}`;
+    }
+}
+
+// 编辑患者（挂载到全局作用域）
+window.editPatient = async function(id) {
+    try {
+        // 使用SPA路由导航
+        if (window.app && window.app.navigate) {
+            window.app.navigate(`patients/edit?id=${id}`);
+        } else {
+            // 降级方案：直接跳转
+            window.location.href = `/views/patients/edit.html?id=${id}`;
+        }
+    } catch (error) {
+        console.error('编辑患者失败:', error);
+        utils.showToast('编辑患者失败', 'danger');
+    }
+}
+
+// 删除患者（挂载到全局作用域）
+window.deletePatient = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认删除',
+        message: '确定要删除该患者吗？此操作不可恢复。',
+        confirmText: '删除',
+        confirmType: 'danger'
+    });
+    
+    if (confirmed) {
+        try {
+            await PatientAPI.delete(id);
+            utils.showToast('删除患者成功', 'success');
+            window.loadPatients();
+        } catch (error) {
+            console.error('删除患者失败:', error);
+            const errorMsg = error.message || '删除患者失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+
+// 导出患者（挂载到全局作用域）
+window.exportPatients = function() {
+    utils.showToast('导出功能待实现', 'info');
+}
+</script>
+

@@ -1,0 +1,1136 @@
+<!-- 打印模板编辑器页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('system')">系统管理</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('system/print-templates')">打印模板管理</a></li>
+            <li class="breadcrumb-item active">模板编辑器</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-pencil-square"></i> 模板编辑器</h1>
+        <div>
+            <button type="button" class="btn btn-secondary" onclick="if(window.saveTemplate) window.saveTemplate()">
+                <i class="bi bi-save"></i> 保存
+            </button>
+            <button type="button" class="btn btn-info" onclick="if(window.previewTemplateEditor) window.previewTemplateEditor()">
+                <i class="bi bi-eye"></i> 预览
+            </button>
+            <button type="button" class="btn btn-outline-secondary" onclick="app.navigate('system/print-templates')">
+                <i class="bi bi-arrow-left"></i> 返回
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 左侧：字段列表和属性面板 -->
+    <div class="col-md-3">
+        <!-- 字段列表 -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-list"></i> 可用字段</h6>
+            </div>
+            <div class="card-body">
+                <div id="field-list" class="field-list">
+                    <div class="field-item" data-type="text" draggable="true">
+                        <i class="bi bi-type"></i> 文本
+                    </div>
+                    <div class="field-item" data-type="data" draggable="true">
+                        <i class="bi bi-database"></i> 数据字段
+                    </div>
+                    <div class="field-item" data-type="table" draggable="true">
+                        <i class="bi bi-table"></i> 表格
+                    </div>
+                    <div class="field-item" data-type="image" draggable="true">
+                        <i class="bi bi-image"></i> 图片
+                    </div>
+                    <div class="field-item" data-type="line" draggable="true">
+                        <i class="bi bi-hr"></i> 分隔线
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 属性面板 -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-sliders"></i> 字段属性</h6>
+            </div>
+            <div class="card-body" id="property-panel">
+                <p class="text-muted">请选择一个字段进行编辑</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 中间：画布区域 -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-layout-text-window"></i> 模板画布</h6>
+            </div>
+            <div class="card-body">
+                <div id="template-canvas" class="template-canvas">
+                    <div class="section" data-section="header">
+                        <div class="section-header">
+                            <span class="section-title">页眉</span>
+                            <button type="button" class="btn btn-sm btn-link" onclick="if(window.addFieldToSection) window.addFieldToSection('header')">
+                                <i class="bi bi-plus"></i> 添加字段
+                            </button>
+                        </div>
+                        <div class="section-content" id="section-header"></div>
+                    </div>
+                    <div class="section" data-section="body">
+                        <div class="section-header">
+                            <span class="section-title">正文</span>
+                            <button type="button" class="btn btn-sm btn-link" onclick="if(window.addFieldToSection) window.addFieldToSection('body')">
+                                <i class="bi bi-plus"></i> 添加字段
+                            </button>
+                        </div>
+                        <div class="section-content" id="section-body"></div>
+                    </div>
+                    <div class="section" data-section="footer">
+                        <div class="section-header">
+                            <span class="section-title">页脚</span>
+                            <button type="button" class="btn btn-sm btn-link" onclick="if(window.addFieldToSection) window.addFieldToSection('footer')">
+                                <i class="bi bi-plus"></i> 添加字段
+                            </button>
+                        </div>
+                        <div class="section-content" id="section-footer"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧：预览区域 -->
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-eye"></i> 实时预览</h6>
+            </div>
+            <div class="card-body">
+                <div id="preview-container" class="preview-container">
+                    <p class="text-muted">预览内容将在这里显示</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 引入SortableJS -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+<script>
+let templateId = null;
+let templateData = null;
+let templateConfig = null;
+let selectedField = null;
+let fieldCounter = 0;
+let sortableInstances = {};
+
+// 根据模板类型获取可用字段
+const fieldDefinitions = {
+    bill: {
+        data: [
+            { name: 'bill_no', label: '账单号' },
+            { name: 'patient_name', label: '患者姓名' },
+            { name: 'patient_id_card', label: '身份证号' },
+            { name: 'registration_no', label: '挂号号' },
+            { name: 'total_amount', label: '总金额' },
+            { name: 'paid_amount', label: '已支付金额' },
+            { name: 'discount_amount', label: '优惠金额' },
+            { name: 'insurance_amount', label: '医保支付金额' },
+            { name: 'payment_method', label: '支付方式' },
+            { name: 'payment_time', label: '支付时间' },
+            { name: 'created_at', label: '创建时间' }
+        ],
+        table: {
+            name: 'items',
+            label: '账单明细',
+            columns: [
+                { name: 'item_name', label: '项目名称' },
+                { name: 'quantity', label: '数量' },
+                { name: 'unit_price', label: '单价' },
+                { name: 'total_price', label: '金额' }
+            ]
+        }
+    },
+    prescription: {
+        data: [
+            { name: 'prescription_no', label: '处方号' },
+            { name: 'patient_name', label: '患者姓名' },
+            { name: 'doctor_name', label: '医生姓名' },
+            { name: 'total_amount', label: '总金额' },
+            { name: 'created_at', label: '创建时间' }
+        ],
+        table: {
+            name: 'items',
+            label: '药品明细',
+            columns: [
+                { name: 'drug_name', label: '药品名称' },
+                { name: 'specification', label: '规格' },
+                { name: 'quantity', label: '数量' },
+                { name: 'unit', label: '单位' },
+                { name: 'usage', label: '用法用量' },
+                { name: 'price', label: '单价' },
+                { name: 'amount', label: '金额' }
+            ]
+        }
+    },
+    medical_record: {
+        data: [
+            { name: 'record_no', label: '病历号' },
+            { name: 'patient_name', label: '患者姓名' },
+            { name: 'doctor_name', label: '医生姓名' },
+            { name: 'diagnosis', label: '诊断' },
+            { name: 'symptoms', label: '症状' },
+            { name: 'treatment', label: '治疗方案' },
+            { name: 'created_at', label: '创建时间' }
+        ],
+        table: null
+    }
+};
+
+// 挂载到全局作用域
+window.pageInit = async function() {
+    // 从URL获取模板ID
+    let queryString = '';
+    if (window.location.hash) {
+        const hashParts = window.location.hash.split('?');
+        if (hashParts.length > 1) {
+            queryString = hashParts[1];
+        }
+    }
+    if (!queryString && window.location.search) {
+        queryString = window.location.search.substring(1);
+    }
+    if (!queryString && app && app.currentRoute) {
+        const routeParts = app.currentRoute.split('?');
+        if (routeParts.length > 1) {
+            queryString = routeParts[1];
+        }
+    }
+    
+    const urlParams = new URLSearchParams(queryString);
+    templateId = urlParams.get('id');
+    
+    if (!templateId) {
+        document.getElementById('page-content').innerHTML = '<div class="alert alert-danger">模板ID不存在</div>';
+        return;
+    }
+    
+    // 等待 SortableJS 加载完成（最多等待 2 秒）
+    await waitForSortableJS(2000);
+    
+    await loadTemplate();
+    initEditor();
+    initSortable();
+    updatePreview();
+};
+
+// 等待 SortableJS 加载完成
+function waitForSortableJS(timeout = 2000) {
+    return new Promise((resolve) => {
+        if (typeof Sortable !== 'undefined') {
+            resolve();
+            return;
+        }
+        
+        const startTime = Date.now();
+        const checkInterval = setInterval(() => {
+            if (typeof Sortable !== 'undefined') {
+                clearInterval(checkInterval);
+                resolve();
+            } else if (Date.now() - startTime > timeout) {
+                clearInterval(checkInterval);
+                console.warn('SortableJS 加载超时，继续执行');
+                resolve();
+            }
+        }, 50);
+    });
+}
+
+// 加载模板数据
+async function loadTemplate() {
+    try {
+        const response = await PrintTemplateAPI.getDetail(templateId);
+        
+        if (response && response.data) {
+            templateData = response.data;
+        } else {
+            templateData = response;
+        }
+        
+        if (!templateData) {
+            throw new Error('模板数据为空');
+        }
+        
+        templateConfig = templateData.template_config || {
+            version: "1.0",
+            page: { width: 210, height: 297, unit: "mm", margin: { top: 10, right: 10, bottom: 10, left: 10 } },
+            sections: [
+                { id: "header", name: "页眉", fields: [] },
+                { id: "body", name: "正文", fields: [] },
+                { id: "footer", name: "页脚", fields: [] }
+            ]
+        };
+        
+        // 渲染现有字段
+        renderFields();
+        
+    } catch (error) {
+        console.error('加载模板失败:', error);
+        if (window.utils && window.utils.showToast) {
+            window.utils.showToast('加载模板失败', 'danger');
+        }
+    }
+}
+
+// 初始化编辑器
+function initEditor() {
+    // 初始化字段计数器
+    const allFields = [];
+    templateConfig.sections.forEach(section => {
+        if (section.fields) {
+            allFields.push(...section.fields);
+        }
+    });
+    if (allFields.length > 0) {
+        const maxId = Math.max(...allFields.map(f => {
+            const match = f.id ? f.id.match(/field_(\d+)/) : null;
+            return match ? parseInt(match[1]) : 0;
+        }));
+        fieldCounter = maxId + 1;
+    }
+    
+    // 设置字段列表的拖拽
+    const fieldList = document.getElementById('field-list');
+    fieldList.querySelectorAll('.field-item').forEach(item => {
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+    });
+}
+
+// 初始化Sortable（用于字段排序）
+function initSortable() {
+    // 等待 SortableJS 加载完成
+    const waitForSortable = (retries = 10) => {
+        if (typeof Sortable !== 'undefined') {
+            // SortableJS 已加载，初始化
+            ['header', 'body', 'footer'].forEach(sectionId => {
+                const sectionContent = document.getElementById(`section-${sectionId}`);
+                if (sectionContent) {
+                    // 如果已存在实例，先销毁
+                    if (sortableInstances[sectionId]) {
+                        sortableInstances[sectionId].destroy();
+                    }
+                    sortableInstances[sectionId] = new Sortable(sectionContent, {
+                        animation: 150,
+                        handle: '.field-handle',
+                        onEnd: function(evt) {
+                            updateTemplateConfig();
+                            updatePreview();
+                        }
+                    });
+                }
+            });
+        } else if (retries > 0) {
+            // 等待 100ms 后重试
+            setTimeout(() => waitForSortable(retries - 1), 100);
+        } else {
+            console.error('SortableJS 加载超时，拖拽功能可能无法使用');
+        }
+    };
+    
+    waitForSortable();
+}
+
+// 渲染字段
+function renderFields() {
+    templateConfig.sections.forEach(section => {
+        const sectionContent = document.getElementById(`section-${section.id}`);
+        if (sectionContent) {
+            sectionContent.innerHTML = '';
+            if (section.fields && section.fields.length > 0) {
+                section.fields.forEach(field => {
+                    const fieldElement = createFieldElement(field);
+                    sectionContent.appendChild(fieldElement);
+                });
+            }
+        }
+    });
+}
+
+// 创建字段元素
+function createFieldElement(field) {
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'canvas-field';
+    fieldDiv.dataset.fieldId = field.id;
+    
+    const fieldType = field.type || 'text';
+    const fieldLabel = field.label || field.name || '';
+    
+    fieldDiv.innerHTML = `
+        <div class="field-handle">
+            <i class="bi bi-grip-vertical"></i>
+        </div>
+        <div class="field-content">
+            <span class="field-type-badge">${getFieldTypeLabel(fieldType)}</span>
+            <span class="field-label">${fieldLabel}</span>
+        </div>
+        <div class="field-actions">
+            <button type="button" class="btn btn-sm btn-link" onclick="if(window.editField) window.editField('${field.id}')" title="编辑">
+                <i class="bi bi-pencil"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-link text-danger" onclick="if(window.deleteField) window.deleteField('${field.id}')" title="删除">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    `;
+    
+    fieldDiv.addEventListener('click', (e) => {
+        if (!e.target.closest('.field-actions')) {
+            selectField(field.id);
+        }
+    });
+    
+    return fieldDiv;
+}
+
+// 获取字段类型标签
+function getFieldTypeLabel(type) {
+    const labels = {
+        'text': '文本',
+        'data': '数据',
+        'table': '表格',
+        'image': '图片',
+        'line': '分隔线'
+    };
+    return labels[type] || type;
+}
+
+// 拖拽开始
+function handleDragStart(e) {
+    e.dataTransfer.setData('text/plain', e.target.dataset.type);
+    e.target.classList.add('dragging');
+}
+
+// 拖拽结束
+function handleDragEnd(e) {
+    e.target.classList.remove('dragging');
+}
+
+// 添加字段到区域
+window.addFieldToSection = async function(sectionId) {
+    if (!templateData || !templateData.type) {
+        if (window.utils && window.utils.showToast) {
+            window.utils.showToast('模板类型未设置，无法添加字段', 'warning');
+        }
+        return;
+    }
+    
+    // 构建字段类型选项
+    const fieldTypeOptions = [
+        { value: 'text', label: '文本', icon: 'bi-type', description: '静态文本内容' },
+        { value: 'data', label: '数据字段', icon: 'bi-database', description: '动态数据字段' },
+        { value: 'table', label: '表格', icon: 'bi-table', description: '数据表格' },
+        { value: 'image', label: '图片', icon: 'bi-image', description: '图片显示' },
+        { value: 'line', label: '分隔线', icon: 'bi-hr', description: '水平分隔线' }
+    ];
+    
+    // 如果是数据字段类型，显示可用字段选择
+    let dataFieldOptions = null;
+    if (fieldDefinitions[templateData.type]?.data) {
+        dataFieldOptions = fieldDefinitions[templateData.type].data;
+    }
+    
+    // 创建字段选择表单
+    let formHtml = `
+        <div class="mb-3">
+            <label class="form-label">字段类型 <span class="text-danger">*</span></label>
+            <select class="form-select" id="add-field-type" required>
+                ${fieldTypeOptions.map(opt => `
+                    <option value="${opt.value}" ${opt.value === 'data' ? 'selected' : ''}>
+                        ${opt.label} - ${opt.description}
+                    </option>
+                `).join('')}
+            </select>
+        </div>
+    `;
+    
+    // 如果是数据字段，显示字段选择
+    if (dataFieldOptions && dataFieldOptions.length > 0) {
+        formHtml += `
+            <div class="mb-3" id="data-field-select-container">
+                <label class="form-label">选择数据字段</label>
+                <select class="form-select" id="add-data-field-name">
+                    ${dataFieldOptions.map(f => `
+                        <option value="${f.name}">${f.label}</option>
+                    `).join('')}
+                </select>
+            </div>
+        `;
+    }
+    
+    // 显示模态框
+    const result = await ModalComponents.showFormModal({
+        title: '添加字段',
+        formHtml: formHtml,
+        size: 'md',
+        onSubmit: async (data) => {
+            const fieldType = document.getElementById('add-field-type').value;
+            if (!fieldType) {
+                if (window.utils && window.utils.showToast) {
+                    window.utils.showToast('请选择字段类型', 'danger');
+                }
+                return false;
+            }
+            
+            const fieldId = `field_${fieldCounter++}`;
+            const field = {
+                id: fieldId,
+                type: fieldType,
+                name: '',
+                label: '',
+                value: '',
+                position: { x: 0, y: 0 },
+                style: {}
+            };
+            
+            // 根据类型设置默认值
+            if (fieldType === 'data' && dataFieldOptions && dataFieldOptions.length > 0) {
+                const selectedName = document.getElementById('add-data-field-name')?.value;
+                const selectedField = dataFieldOptions.find(f => f.name === selectedName) || dataFieldOptions[0];
+                field.name = selectedField.name;
+                field.label = selectedField.label;
+            } else if (fieldType === 'table' && templateData && templateData.type) {
+                const tableDef = fieldDefinitions[templateData.type]?.table;
+                if (tableDef) {
+                    field.name = tableDef.name;
+                    field.label = tableDef.label;
+                    field.columns = tableDef.columns;
+                }
+            } else if (fieldType === 'text') {
+                field.value = '请输入文本';
+                field.label = '文本';
+            } else if (fieldType === 'line') {
+                field.label = '分隔线';
+            } else if (fieldType === 'image') {
+                field.value = '';
+                field.label = '图片';
+            }
+            
+            // 添加到配置
+            const section = templateConfig.sections.find(s => s.id === sectionId);
+            if (section) {
+                if (!section.fields) {
+                    section.fields = [];
+                }
+                section.fields.push(field);
+                
+                // 渲染字段
+                const sectionContent = document.getElementById(`section-${sectionId}`);
+                if (sectionContent) {
+                    const fieldElement = createFieldElement(field);
+                    sectionContent.appendChild(fieldElement);
+                    
+                    // 重新初始化Sortable
+                    if (sortableInstances[sectionId]) {
+                        sortableInstances[sectionId].destroy();
+                    }
+                    if (typeof Sortable !== 'undefined') {
+                        sortableInstances[sectionId] = new Sortable(sectionContent, {
+                            animation: 150,
+                            handle: '.field-handle',
+                            onEnd: function(evt) {
+                                updateTemplateConfig();
+                                updatePreview();
+                            }
+                        });
+                    }
+                }
+                
+                updatePreview();
+                selectField(fieldId);
+            }
+            
+            return true;
+        }
+    });
+};
+
+// 选择字段
+function selectField(fieldId) {
+    // 移除之前的选中状态
+    document.querySelectorAll('.canvas-field').forEach(el => {
+        el.classList.remove('selected');
+    });
+    
+    // 添加选中状态
+    const fieldElement = document.querySelector(`[data-field-id="${fieldId}"]`);
+    if (fieldElement) {
+        fieldElement.classList.add('selected');
+    }
+    
+    // 查找字段配置
+    let field = null;
+    for (const section of templateConfig.sections) {
+        if (section.fields) {
+            field = section.fields.find(f => f.id === fieldId);
+            if (field) break;
+        }
+    }
+    
+    selectedField = field;
+    renderPropertyPanel();
+}
+
+// 渲染属性面板
+function renderPropertyPanel() {
+    const panel = document.getElementById('property-panel');
+    if (!panel) return;
+    
+    if (!selectedField) {
+        panel.innerHTML = '<p class="text-muted">请选择一个字段进行编辑</p>';
+        return;
+    }
+    
+    const fieldType = selectedField.type || 'text';
+    let html = `
+        <div class="mb-3">
+            <label class="form-label">字段类型</label>
+            <input type="text" class="form-control" value="${getFieldTypeLabel(fieldType)}" readonly>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">字段标签</label>
+            <input type="text" class="form-control" id="prop-label" value="${selectedField.label || ''}" 
+                   onchange="if(window.updateFieldProperty) window.updateFieldProperty('label', this.value)">
+        </div>
+    `;
+    
+    if (fieldType === 'text') {
+        html += `
+            <div class="mb-3">
+                <label class="form-label">文本内容</label>
+                <input type="text" class="form-control" id="prop-value" value="${selectedField.value || ''}" 
+                       onchange="if(window.updateFieldProperty) window.updateFieldProperty('value', this.value)">
+            </div>
+        `;
+    } else if (fieldType === 'data') {
+        const availableFields = fieldDefinitions[templateData.type]?.data || [];
+        html += `
+            <div class="mb-3">
+                <label class="form-label">数据字段</label>
+                <select class="form-select" id="prop-name" onchange="if(window.updateFieldProperty) window.updateFieldProperty('name', this.value)">
+                    ${availableFields.map(f => `
+                        <option value="${f.name}" ${selectedField.name === f.name ? 'selected' : ''}>${f.label}</option>
+                    `).join('')}
+                </select>
+            </div>
+        `;
+    } else if (fieldType === 'table') {
+        html += `
+            <div class="mb-3">
+                <label class="form-label">表格数据字段</label>
+                <input type="text" class="form-control" id="prop-name" value="${selectedField.name || 'items'}" 
+                       onchange="if(window.updateFieldProperty) window.updateFieldProperty('name', this.value)">
+            </div>
+        `;
+    } else if (fieldType === 'image') {
+        html += `
+            <div class="mb-3">
+                <label class="form-label">图片URL</label>
+                <input type="text" class="form-control" id="prop-value" value="${selectedField.value || ''}" 
+                       onchange="if(window.updateFieldProperty) window.updateFieldProperty('value', this.value)">
+            </div>
+        `;
+    }
+    
+    html += `
+        <div class="mb-3">
+            <label class="form-label">字体大小 (px)</label>
+            <input type="number" class="form-control" id="prop-fontSize" value="${selectedField.style?.fontSize || ''}" 
+                   onchange="if(window.updateFieldProperty) window.updateFieldProperty('style.fontSize', this.value)">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">字体粗细</label>
+            <select class="form-select" id="prop-fontWeight" onchange="if(window.updateFieldProperty) window.updateFieldProperty('style.fontWeight', this.value)">
+                <option value="" ${!selectedField.style?.fontWeight ? 'selected' : ''}>正常</option>
+                <option value="bold" ${selectedField.style?.fontWeight === 'bold' ? 'selected' : ''}>粗体</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">文本对齐</label>
+            <select class="form-select" id="prop-textAlign" onchange="if(window.updateFieldProperty) window.updateFieldProperty('style.textAlign', this.value)">
+                <option value="left" ${selectedField.style?.textAlign === 'left' || !selectedField.style?.textAlign ? 'selected' : ''}>左对齐</option>
+                <option value="center" ${selectedField.style?.textAlign === 'center' ? 'selected' : ''}>居中</option>
+                <option value="right" ${selectedField.style?.textAlign === 'right' ? 'selected' : ''}>右对齐</option>
+            </select>
+        </div>
+    `;
+    
+    panel.innerHTML = html;
+}
+
+// 更新字段属性
+window.updateFieldProperty = function(property, value) {
+    if (!selectedField) return;
+    
+    if (property.includes('.')) {
+        const [parent, child] = property.split('.');
+        if (!selectedField[parent]) {
+            selectedField[parent] = {};
+        }
+        selectedField[parent][child] = value;
+    } else {
+        selectedField[property] = value;
+    }
+    
+    // 更新字段显示
+    const fieldElement = document.querySelector(`[data-field-id="${selectedField.id}"]`);
+    if (fieldElement) {
+        const labelSpan = fieldElement.querySelector('.field-label');
+        if (labelSpan) {
+            if (property === 'label') {
+                labelSpan.textContent = value || selectedField.name || '';
+            } else if (property === 'name' && selectedField.type === 'data') {
+                // 如果是数据字段，更新标签显示
+                const availableFields = fieldDefinitions[templateData?.type]?.data || [];
+                const fieldDef = availableFields.find(f => f.name === value);
+                if (fieldDef) {
+                    labelSpan.textContent = selectedField.label || fieldDef.label || value;
+                }
+            }
+        }
+        
+        // 更新字段类型徽章（如果需要）
+        const typeBadge = fieldElement.querySelector('.field-type-badge');
+        if (typeBadge && property === 'type') {
+            typeBadge.textContent = getFieldTypeLabel(value);
+        }
+    }
+    
+    // 更新模板配置
+    updateTemplateConfig();
+    
+    // 实时更新预览
+    updatePreview();
+};
+
+// 编辑字段
+window.editField = function(fieldId) {
+    selectField(fieldId);
+};
+
+// 删除字段
+window.deleteField = function(fieldId) {
+    if (!confirm('确定要删除此字段吗？')) return;
+    
+    // 从配置中删除
+    for (const section of templateConfig.sections) {
+        if (section.fields) {
+            const index = section.fields.findIndex(f => f.id === fieldId);
+            if (index !== -1) {
+                section.fields.splice(index, 1);
+                break;
+            }
+        }
+    }
+    
+    // 从DOM中删除
+    const fieldElement = document.querySelector(`[data-field-id="${fieldId}"]`);
+    if (fieldElement) {
+        fieldElement.remove();
+    }
+    
+    selectedField = null;
+    renderPropertyPanel();
+    updatePreview();
+};
+
+// 更新模板配置
+function updateTemplateConfig() {
+    ['header', 'body', 'footer'].forEach(sectionId => {
+        const sectionContent = document.getElementById(`section-${sectionId}`);
+        if (sectionContent) {
+            const section = templateConfig.sections.find(s => s.id === sectionId);
+            if (section) {
+                section.fields = [];
+                sectionContent.querySelectorAll('.canvas-field').forEach(fieldEl => {
+                    const fieldId = fieldEl.dataset.fieldId;
+                    const field = findFieldById(fieldId);
+                    if (field) {
+                        section.fields.push(field);
+                    }
+                });
+            }
+        }
+    });
+}
+
+// 查找字段
+function findFieldById(fieldId) {
+    for (const section of templateConfig.sections) {
+        if (section.fields) {
+            const field = section.fields.find(f => f.id === fieldId);
+            if (field) return field;
+        }
+    }
+    return null;
+}
+
+// 更新预览（实时预览，使用本地配置）
+async function updatePreview() {
+    const previewContainer = document.getElementById('preview-container');
+    if (!previewContainer) return;
+    
+    try {
+        // 先更新配置
+        updateTemplateConfig();
+        
+        // 使用本地配置进行实时预览
+        const previewHtml = renderPreviewLocally();
+        if (previewHtml) {
+            previewContainer.innerHTML = previewHtml;
+        } else {
+            previewContainer.innerHTML = '<p class="text-muted">暂无预览内容</p>';
+        }
+    } catch (error) {
+        console.error('更新预览失败:', error);
+        previewContainer.innerHTML = '<p class="text-danger">预览失败: ' + error.message + '</p>';
+    }
+}
+
+// 本地渲染预览（不调用API，实时显示）
+function renderPreviewLocally() {
+    if (!templateConfig || !templateData) return '';
+    
+    const mockData = getMockDataForPreview(templateData.type);
+    
+    // 获取页面设置
+    const page = templateConfig.page || {};
+    const width = page.width || 210;
+    const height = page.height || 297;
+    const unit = page.unit || 'mm';
+    const margin = page.margin || { top: 10, right: 10, bottom: 10, left: 10 };
+    
+    // 构建预览HTML，模拟打印样式
+    let html = `
+        <div class="print-preview" style="
+            background: white; 
+            padding: ${margin.top}${unit} ${margin.right}${unit} ${margin.bottom}${unit} ${margin.left}${unit};
+            border: 1px solid #ddd;
+            width: ${width}${unit};
+            min-height: ${height}${unit};
+            margin: 0 auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        ">
+    `;
+    
+    templateConfig.sections.forEach(section => {
+        if (section.fields && section.fields.length > 0) {
+            html += `<div class="preview-section preview-${section.id}" style="margin-bottom: 10px;">`;
+            section.fields.forEach(field => {
+                html += renderFieldPreview(field, mockData);
+            });
+            html += '</div>';
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
+// 渲染字段预览
+function renderFieldPreview(field, mockData) {
+    const style = field.style || {};
+    const styleStr = Object.entries(style).map(([k, v]) => {
+        if (!v) return '';
+        const cssKey = k.replace(/([A-Z])/g, '-$1').toLowerCase();
+        return `${cssKey}: ${v}`;
+    }).filter(s => s).join('; ');
+    
+    let content = '';
+    if (field.type === 'text') {
+        content = field.value || '';
+    } else if (field.type === 'data') {
+        const value = mockData[field.name] || '';
+        if (field.label) {
+            content = `<span class="field-label" style="font-weight: bold; margin-right: 5px;">${field.label}:</span>${value}`;
+        } else {
+            content = value;
+        }
+    } else if (field.type === 'table') {
+        const tableData = mockData[field.name] || [];
+        content = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;"><thead><tr>';
+        if (field.columns && field.columns.length > 0) {
+            field.columns.forEach(col => {
+                content += `<th style="border: 1px solid #ddd; padding: 5px; text-align: left; background-color: #f5f5f5;">${col.label || col.name}</th>`;
+            });
+        }
+        content += '</tr></thead><tbody>';
+        if (tableData.length > 0) {
+            tableData.forEach(row => {
+                content += '<tr>';
+                if (field.columns) {
+                    field.columns.forEach(col => {
+                        content += `<td style="border: 1px solid #ddd; padding: 5px;">${row[col.name] || ''}</td>`;
+                    });
+                }
+                content += '</tr>';
+            });
+        } else {
+            content += '<tr><td colspan="' + (field.columns ? field.columns.length : 1) + '" style="text-align: center; padding: 10px; color: #999;">暂无数据</td></tr>';
+        }
+        content += '</tbody></table>';
+    } else if (field.type === 'image') {
+        content = field.value ? `<img src="${field.value}" style="max-width: 100%; height: auto;" alt="${field.label || ''}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"><span style="display:none; color: #999;">[图片加载失败]</span>` : '<span style="color: #999;">[图片]</span>';
+    } else if (field.type === 'line') {
+        content = '<hr style="border: none; border-top: 1px solid #ddd; margin: 10px 0;">';
+    }
+    
+    const fieldStyle = styleStr ? ` style="${styleStr}"` : '';
+    return `<div class="preview-field"${fieldStyle}>${content}</div>`;
+}
+
+// 获取预览用的模拟数据
+function getMockDataForPreview(type) {
+    const mockData = {
+        bill: {
+            bill_no: 'BILL20250109001',
+            patient_name: '张三',
+            patient_id_card: '320***********1234',
+            registration_no: 'REG20250109001',
+            total_amount: '128.50',
+            paid_amount: '128.50',
+            discount_amount: '0.00',
+            insurance_amount: '0.00',
+            payment_method: '现金',
+            payment_time: '2025-01-09 10:30:00',
+            created_at: '2025-01-09 10:25:00',
+            items: [
+                { item_name: '挂号费', quantity: 1, unit_price: '10.00', total_price: '10.00' },
+                { item_name: '诊疗费', quantity: 1, unit_price: '50.00', total_price: '50.00' },
+                { item_name: '药品费', quantity: 2, unit_price: '34.25', total_price: '68.50' }
+            ]
+        },
+        prescription: {
+            prescription_no: 'RX20250109001',
+            patient_name: '张三',
+            doctor_name: '李医生',
+            total_amount: '68.50',
+            created_at: '2025-01-09 10:30:00',
+            items: [
+                { drug_name: '阿莫西林', specification: '0.25g*24片', quantity: 1, unit: '盒', usage: '一日三次，每次2片', price: '34.25', amount: '34.25' },
+                { drug_name: '感冒灵', specification: '10g*6袋', quantity: 1, unit: '盒', usage: '一日三次，每次1袋', price: '34.25', amount: '34.25' }
+            ]
+        },
+        medical_record: {
+            record_no: 'MR20250109001',
+            patient_name: '张三',
+            doctor_name: '李医生',
+            diagnosis: '感冒',
+            symptoms: '咳嗽、流鼻涕、发热',
+            treatment: '多休息，多喝水，按时服药',
+            created_at: '2025-01-09 10:30:00'
+        }
+    };
+    
+    return mockData[type] || {};
+}
+
+// 预览模板（完整预览，调用API）
+window.previewTemplateEditor = async function() {
+    if (!templateId) {
+        if (window.utils && window.utils.showToast) {
+            window.utils.showToast('模板ID不存在', 'warning');
+        }
+        return;
+    }
+    
+    try {
+        // 先保存配置
+        updateTemplateConfig();
+        await PrintTemplateAPI.update(templateId, {
+            template_config: templateConfig
+        });
+        
+        // 调用预览API
+        const response = await PrintTemplateAPI.preview(templateId, {
+            data_type: templateData.type
+        });
+        
+        let html = '';
+        if (response && response.data && response.data.html) {
+            html = response.data.html;
+        } else if (response && response.html) {
+            html = response.html;
+        }
+        
+        if (html) {
+            // 打开新窗口显示预览
+            const previewWindow = window.open('', '_blank');
+            previewWindow.document.write(html);
+            previewWindow.document.close();
+        } else {
+            if (window.utils && window.utils.showToast) {
+                window.utils.showToast('预览失败：未获取到HTML内容', 'danger');
+            }
+        }
+    } catch (error) {
+        console.error('预览模板失败:', error);
+        if (window.utils && window.utils.showToast) {
+            window.utils.showToast('预览失败: ' + (error.message || '未知错误'), 'danger');
+        }
+    }
+};
+
+// 保存模板
+window.saveTemplate = async function() {
+    if (!templateId) return;
+    
+    updateTemplateConfig();
+    
+    try {
+        await PrintTemplateAPI.update(templateId, {
+            template_config: templateConfig
+        });
+        
+        if (window.utils && window.utils.showToast) {
+            window.utils.showToast('保存成功', 'success');
+        }
+    } catch (error) {
+        console.error('保存模板失败:', error);
+        let errorMsg = error.message || '保存模板失败';
+        if (error.response && error.response.data && error.response.data.message) {
+            errorMsg = error.response.data.message;
+        }
+        if (window.utils && window.utils.showToast) {
+            window.utils.showToast(errorMsg, 'danger');
+        }
+    }
+};
+</script>
+
+<style>
+.field-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.field-item {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: move;
+    background: #f8f9fa;
+    transition: all 0.2s;
+}
+
+.field-item:hover {
+    background: #e9ecef;
+    border-color: #0d6efd;
+}
+
+.field-item.dragging {
+    opacity: 0.5;
+}
+
+.template-canvas {
+    min-height: 600px;
+    padding: 20px;
+    background: #f8f9fa;
+}
+
+.section {
+    margin-bottom: 20px;
+    border: 2px dashed #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    background: white;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.section-title {
+    font-weight: bold;
+    color: #666;
+}
+
+.section-content {
+    min-height: 100px;
+    padding: 10px;
+}
+
+.canvas-field {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    margin: 5px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.canvas-field:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.canvas-field.selected {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+}
+
+.field-handle {
+    cursor: move;
+    color: #999;
+    margin-right: 10px;
+}
+
+.field-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.field-type-badge {
+    padding: 2px 8px;
+    background: #0d6efd;
+    color: white;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.field-label {
+    font-weight: 500;
+}
+
+.field-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.preview-container {
+    min-height: 400px;
+    max-height: 600px;
+    overflow: auto;
+    border: 1px solid #ddd;
+    padding: 20px;
+    background: white;
+}
+</style>
+

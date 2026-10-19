@@ -1,0 +1,1099 @@
+<!-- 病历编辑页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('treatments')">诊疗管理</a></li>
+            <li class="breadcrumb-item active" id="page-title-breadcrumb">新建病历</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-file-earmark-medical"></i> <span id="page-title">新建病历</span></h1>
+        <div>
+            <button type="button" class="btn btn-info" onclick="window.print()">
+                <i class="bi bi-printer"></i> 打印
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="app.navigate('treatments')">
+                <i class="bi bi-arrow-left"></i> 返回
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="medical-record-form-container"></div>
+
+<script>
+let recordId = null;
+let isEdit = false;
+let diagnosisType = 'western'; // western, tcm, combined
+
+window.pageInit = async function() {
+    // 从URL获取参数（支持hash路由和直接URL）
+    let urlParams;
+    if (window.location.hash && window.location.hash.includes('?')) {
+        // 从hash中获取查询参数
+        const hashQuery = window.location.hash.split('?')[1];
+        urlParams = new URLSearchParams(hashQuery);
+    } else {
+        // 从URL search中获取查询参数
+        urlParams = new URLSearchParams(window.location.search);
+    }
+    
+    recordId = urlParams.get('id');
+    const registrationId = urlParams.get('registration_id');
+    isEdit = !!recordId;
+    
+    // 更新页面标题
+    const pageTitle = isEdit ? '编辑病历' : '新建病历';
+    const titleElement = document.getElementById('page-title');
+    const breadcrumbElement = document.getElementById('page-title-breadcrumb');
+    if (titleElement) titleElement.textContent = pageTitle;
+    if (breadcrumbElement) breadcrumbElement.textContent = pageTitle;
+    
+    renderForm();
+    
+    // 如果是新建病历，根据registration_id自动填充信息
+    if (!isEdit) {
+        if (registrationId) {
+            // 从挂号记录自动填充
+            await autoFillFromRegistration(registrationId);
+        } else {
+            // 否则自动填充当前用户信息
+            await autoFillCurrentUserInfo();
+        }
+    }
+    
+    if (isEdit) {
+        loadRecordData();
+    }
+};
+
+// 渲染表单
+function renderForm() {
+    const container = document.getElementById('medical-record-form-container');
+    if (!container) {
+        console.error('renderForm: 找不到容器元素 medical-record-form-container');
+        return;
+    }
+    
+    console.log('renderForm: 开始渲染表单');
+    
+    // 使用JavaScript动态生成表单，避免模板字符串问题
+    const formHtml = `
+        <form id="medical-record-form" class="needs-validation" novalidate>
+            <!-- 患者信息 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person"></i> 患者信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">患者姓名 <span class="text-danger">*</span></label>
+                            <div id="patient-name-display" class="fw-bold text-primary">请选择患者</div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="selectPatient()">
+                                <i class="bi bi-search"></i> 选择患者
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">性别</label>
+                            <div id="patient-gender-display">-</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">年龄</label>
+                            <div id="patient-age-display">-</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">病历号</label>
+                            <div id="patient-record-no-display">-</div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="patient-id" name="patient_id" required>
+                </div>
+            </div>
+            
+            <!-- 医生和挂号信息 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person-badge"></i> 医生和挂号信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">科室 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="department-select" name="department_id" required onchange="loadDoctorsForMedicalRecord()">
+                                <option value="">请选择科室</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">医生 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="doctor-select" name="doctor_id" required>
+                                <option value="">请先选择科室</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <label class="form-label">挂号记录 <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="registration-display" placeholder="请选择挂号记录" readonly required>
+                                <input type="hidden" id="registration-id" name="registration_id" required>
+                                <button type="button" class="btn btn-outline-primary" onclick="selectRegistration()">
+                                    <i class="bi bi-search"></i> 选择挂号
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 诊断类型选择 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-pulse"></i> 诊断类型</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="diagnosis_type" id="type-western" value="western" checked>
+                        <label class="btn btn-outline-info" for="type-western">
+                            <i class="bi bi-heart-pulse"></i> 西医
+                        </label>
+                        
+                        <input type="radio" class="btn-check" name="diagnosis_type" id="type-tcm" value="tcm">
+                        <label class="btn btn-outline-success" for="type-tcm">
+                            <i class="bi bi-flower1"></i> 中医
+                        </label>
+                        
+                        <input type="radio" class="btn-check" name="diagnosis_type" id="type-combined" value="combined">
+                        <label class="btn btn-outline-primary" for="type-combined">
+                            <i class="bi bi-plus-circle"></i> 中西医结合
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主诉 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-chat-dots"></i> 主诉</h5>
+                </div>
+                <div class="card-body">
+                    <textarea class="form-control" id="chief-complaint" name="chief_complaint" rows="3" placeholder="请输入患者主诉">患者因【症状】于【时间】来诊，【持续时间】。【伴随症状】。</textarea>
+                </div>
+            </div>
+            
+            <!-- 现病史 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> 现病史</h5>
+                </div>
+                <div class="card-body">
+                    <textarea class="form-control" id="present-illness" name="present_illness" rows="4" placeholder="请输入现病史">患者于【时间】前无明显诱因出现【主要症状】，【症状特点】。【病情变化】。【治疗经过】。【一般情况】。</textarea>
+                </div>
+            </div>
+            
+            <!-- 既往史 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-file-medical"></i> 既往史</h5>
+                </div>
+                <div class="card-body">
+                    <textarea class="form-control" id="past-history" name="past_history" rows="3" placeholder="请输入既往史">既往【疾病史】。【手术史】。【外伤史】。【过敏史】。【输血史】。否认【其他疾病】。</textarea>
+                </div>
+            </div>
+            
+            <!-- 体格检查 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> 体格检查</h5>
+                </div>
+                <div class="card-body">
+                    <textarea class="form-control" id="physical-examination" name="physical_examination" rows="4" placeholder="请输入体格检查结果">体温【T】℃，脉搏【P】次/分，呼吸【R】次/分，血压【BP】mmHg。神志【清楚/不清】，【精神状态】。【皮肤黏膜】。【淋巴结】。【头部】。【颈部】。【胸部】。【腹部】。【四肢】。【神经系统】。</textarea>
+                </div>
+            </div>
+            
+            <!-- 诊断（西医/中医/中西医结合） -->
+            <div id="diagnosis-section">
+                <!-- 西医诊断 -->
+                <div id="western-diagnosis" class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-heart-pulse"></i> 西医诊断</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="diagnosis" name="diagnosis" placeholder="请输入诊断" value="【初步诊断】：【疾病名称】">
+                        </div>
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="icd-code" name="icd_code" placeholder="ICD编码（可选）">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 中医诊断 -->
+                <div id="tcm-diagnosis" class="card mb-3" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0"><span class="badge bg-success">中医</span> 中医诊断</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="tcm-syndrome" name="tcm_syndrome" placeholder="请输入证型">
+                        </div>
+                        <div class="mb-3">
+                            <textarea class="form-control" id="tcm-pathogenesis" name="tcm_pathogenesis" rows="3" placeholder="病机分析"></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 中医四诊 -->
+                <div id="tcm-four-exam" class="card mb-3" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0"><span class="badge bg-success">中医</span> 四诊记录</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">望诊</label>
+                                <textarea class="form-control" id="tcm-wang" name="tcm_wang" rows="2" placeholder="望诊信息"></textarea>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">闻诊</label>
+                                <textarea class="form-control" id="tcm-wen" name="tcm_wen" rows="2" placeholder="闻诊信息"></textarea>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">问诊</label>
+                                <textarea class="form-control" id="tcm-wen-question" name="tcm_wen_question" rows="2" placeholder="问诊信息"></textarea>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">切诊</label>
+                                <textarea class="form-control" id="tcm-qie" name="tcm_qie" rows="2" placeholder="切诊信息（脉象等）"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 治疗方案 -->
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> 治疗方案</h5>
+                </div>
+                <div class="card-body">
+                    <textarea class="form-control" id="treatment-plan" name="treatment_plan" rows="4" placeholder="请输入治疗方案">1. 【治疗方案一】：【具体措施】。
+2. 【治疗方案二】：【具体措施】。
+3. 【注意事项】：【注意事项内容】。
+4. 【随访要求】：【随访时间及要求】。</textarea>
+                </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-circle"></i> 保存病历
+                </button>
+                <button type="button" class="btn btn-secondary ms-2" onclick="app.navigate('treatments')">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+            </div>
+        </form>
+    `;
+    
+    // 关键修复：将HTML内容设置到容器中
+    container.innerHTML = formHtml;
+    console.log('renderForm: 表单已渲染到容器');
+    
+    // 绑定表单提交事件
+    const form = document.getElementById('medical-record-form');
+    if (form) {
+        form.addEventListener('submit', handleSubmit);
+        console.log('renderForm: 表单提交事件已绑定');
+    } else {
+        console.error('renderForm: 找不到表单元素 medical-record-form');
+    }
+    
+    // 绑定诊断类型切换事件
+    const diagnosisTypeRadios = document.querySelectorAll('input[name="diagnosis_type"]');
+    diagnosisTypeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            diagnosisType = this.value;
+            toggleDiagnosisSections();
+        });
+    });
+    
+    // 加载科室列表
+    loadDepartmentsForForm();
+}
+
+// 从挂号记录自动填充信息（挂载到全局作用域）
+async function autoFillFromRegistration(registrationId) {
+    try {
+        console.log('autoFillFromRegistration: 开始从挂号记录填充', registrationId);
+        
+        // 获取挂号详情
+        const registrationResponse = await RegistrationAPI.getDetail(registrationId);
+        const registration = registrationResponse.data || registrationResponse;
+        
+        if (!registration) {
+            utils.showToast('获取挂号信息失败', 'danger');
+            return;
+        }
+        
+        console.log('autoFillFromRegistration: 挂号信息', registration);
+        
+        // 1. 自动填充患者信息
+        if (registration.patient_id) {
+            try {
+                const patientResponse = await PatientAPI.getDetail(registration.patient_id);
+                const patient = patientResponse.data || patientResponse;
+                
+                if (patient) {
+                    const patientIdInput = document.getElementById('patient-id');
+                    const patientNameDisplay = document.getElementById('patient-name-display');
+                    const patientGenderDisplay = document.getElementById('patient-gender-display');
+                    const patientAgeDisplay = document.getElementById('patient-age-display');
+                    const patientRecordNoDisplay = document.getElementById('patient-record-no-display');
+                    
+                    if (patientIdInput) patientIdInput.value = patient.id;
+                    if (patientNameDisplay) patientNameDisplay.textContent = patient.name || '未知患者';
+                    
+                    // 性别
+                    if (patientGenderDisplay) {
+                        patientGenderDisplay.textContent = patient.gender === 'male' ? '男' : (patient.gender === 'female' ? '女' : '-');
+                    }
+                    
+                    // 年龄
+                    if (patientAgeDisplay && (patient.birthday || patient.birth_date)) {
+                        const birthDate = new Date(patient.birthday || patient.birth_date);
+                        const age = new Date().getFullYear() - birthDate.getFullYear();
+                        patientAgeDisplay.textContent = age + '岁';
+                    }
+                    
+                    // 病历号
+                    const recordNo = patient.medical_record_no || patient.patient_no || patient.record_no || '-';
+                    if (patientRecordNoDisplay) patientRecordNoDisplay.textContent = recordNo;
+                }
+            } catch (e) {
+                console.error('获取患者信息失败:', e);
+            }
+        }
+        
+        // 2. 自动填充科室和医生
+        if (registration.department_id) {
+            const departmentSelect = document.getElementById('department-select');
+            if (departmentSelect) {
+                // 等待科室列表加载完成
+                setTimeout(() => {
+                    departmentSelect.value = registration.department_id;
+                    // 触发科室选择事件，加载对应医生列表
+                    if (window.loadDoctorsForMedicalRecord) {
+                        window.loadDoctorsForMedicalRecord();
+                    }
+                    
+                    // 3. 自动填充医生
+                    if (registration.doctor_id) {
+                        setTimeout(() => {
+                            const doctorSelect = document.getElementById('doctor-select');
+                            if (doctorSelect) {
+                                doctorSelect.value = registration.doctor_id;
+                            }
+                        }, 800);
+                    }
+                }, 500);
+            }
+        } else if (registration.doctor_id) {
+            // 如果没有科室ID，直接填充医生（医生选择器会自动加载对应科室）
+            setTimeout(() => {
+                const doctorSelect = document.getElementById('doctor-select');
+                if (doctorSelect) {
+                    doctorSelect.value = registration.doctor_id;
+                }
+            }, 1000);
+        }
+        
+        // 4. 自动填充挂号记录
+        const registrationIdInput = document.getElementById('registration-id');
+        const registrationDisplay = document.getElementById('registration-display');
+        
+        if (registrationIdInput) {
+            registrationIdInput.value = registration.id;
+        }
+        if (registrationDisplay) {
+            const displayText = `${registration.registration_date || registration.date || ''} - ${registration.doctor_name || '未知医生'}`;
+            registrationDisplay.value = displayText;
+        }
+        
+        console.log('autoFillFromRegistration: 自动填充完成');
+    } catch (error) {
+        console.error('从挂号记录自动填充失败:', error);
+        utils.showToast('自动填充失败: ' + (error.message || '未知错误'), 'warning');
+    }
+}
+
+// 自动填充当前用户信息（科室和医生）
+async function autoFillCurrentUserInfo() {
+    try {
+        // 获取当前用户信息
+        const userResponse = await UserAPI.getCurrentUserInfo();
+        const currentUser = userResponse.data;
+        
+        if (!currentUser) {
+            console.warn('无法获取当前用户信息');
+            return;
+        }
+        
+        // 获取当前用户的医生信息（通过user_id查找医生）
+        // 注意：需要先获取用户ID，然后查找对应的医生记录
+        const userId = currentUser.id;
+        
+        // 查找该用户对应的医生
+        try {
+            const doctorsResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+            const doctors = doctorsResponse.data?.items || doctorsResponse.items || [];
+            const currentDoctor = doctors.find(d => d.user_id === userId);
+            
+            if (currentDoctor) {
+                // 自动填充医生
+                const doctorSelect = document.getElementById('doctor-select');
+                if (doctorSelect && currentDoctor.id) {
+                    doctorSelect.value = currentDoctor.id;
+                }
+                
+                // 自动填充科室
+                if (currentDoctor.department_id) {
+                    const departmentSelect = document.getElementById('department-select');
+                    if (departmentSelect) {
+                        // 等待科室列表加载完成
+                        setTimeout(() => {
+                            departmentSelect.value = currentDoctor.department_id;
+                            // 触发科室选择事件，加载对应医生列表
+                            if (window.loadDoctorsForMedicalRecord) {
+                                window.loadDoctorsForMedicalRecord();
+                            }
+                        }, 500);
+                    }
+                }
+                
+                console.log('已自动填充医生和科室信息', {
+                    doctor: currentDoctor.name,
+                    department: currentDoctor.department_name
+                });
+            } else {
+                console.warn('当前用户未关联医生信息');
+            }
+        } catch (error) {
+            console.error('获取医生信息失败:', error);
+        }
+    } catch (error) {
+        console.error('自动填充用户信息失败:', error);
+    }
+}
+
+// 加载科室列表
+async function loadDepartmentsForForm() {
+    try {
+        const response = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+        const departments = response.data?.items || response.items || response || [];
+        
+        const departmentSelect = document.getElementById('department-select');
+        if (departmentSelect) {
+            departmentSelect.innerHTML = '<option value="">请选择科室</option>';
+            departments.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept.id;
+                option.textContent = dept.name || dept.code || '未知科室';
+                departmentSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('加载科室列表失败:', error);
+        utils.showToast('加载科室列表失败', 'warning');
+    }
+}
+
+// 加载医生列表（根据选择的科室）（挂载到全局作用域）
+window.loadDoctorsForMedicalRecord = async function() {
+    const departmentSelect = document.getElementById('department-select');
+    const doctorSelect = document.getElementById('doctor-select');
+    
+    if (!departmentSelect || !doctorSelect) return;
+    
+    const departmentId = departmentSelect.value;
+    doctorSelect.innerHTML = '<option value="">请先选择科室</option>';
+    
+    if (!departmentId) return;
+    
+    try {
+        const response = await DoctorAPI.getList({ 
+            page: 1, 
+            page_size: 100,
+            department_id: departmentId
+        });
+        const doctors = response.data?.items || response.items || response || [];
+        
+        doctorSelect.innerHTML = '<option value="">请选择医生</option>';
+        doctors.forEach(doctor => {
+            const option = document.createElement('option');
+            option.value = doctor.id;
+            option.textContent = doctor.name || doctor.employee_no || '未知医生';
+            doctorSelect.appendChild(option);
+        });
+        
+        if (doctors.length === 0) {
+            doctorSelect.innerHTML = '<option value="">该科室暂无医生</option>';
+        }
+    } catch (error) {
+        console.error('加载医生列表失败:', error);
+        utils.showToast('加载医生列表失败', 'warning');
+        doctorSelect.innerHTML = '<option value="">加载失败</option>';
+    }
+};
+
+// 绑定表单事件
+function bindFormEvents() {
+    // 绑定诊断类型切换事件
+    const diagnosisRadios = document.querySelectorAll('input[name="diagnosis_type"]');
+    diagnosisRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            diagnosisType = e.target.value;
+            toggleDiagnosisSections();
+        });
+    });
+    
+    // 绑定表单提交
+    const form = document.getElementById('medical-record-form');
+    if (form) {
+        form.addEventListener('submit', handleSubmit);
+    }
+}
+
+// 切换诊断类型显示
+function toggleDiagnosisSections() {
+    const western = document.getElementById('western-diagnosis');
+    const tcm = document.getElementById('tcm-diagnosis');
+    const tcmFour = document.getElementById('tcm-four-exam');
+    
+    if (diagnosisType === 'western') {
+        western.style.display = 'block';
+        tcm.style.display = 'none';
+        tcmFour.style.display = 'none';
+    } else if (diagnosisType === 'tcm') {
+        western.style.display = 'none';
+        tcm.style.display = 'block';
+        tcmFour.style.display = 'block';
+    } else { // combined
+        western.style.display = 'block';
+        tcm.style.display = 'block';
+        tcmFour.style.display = 'block';
+    }
+}
+
+// 选择患者（挂载到全局作用域）
+window.selectPatient = async function() {
+    try {
+        const patient = await SelectorComponents.showPatientSelector({
+            title: '选择患者',
+            onSelect: (selectedPatient) => {
+                if (!selectedPatient) return;
+                
+                // 更新患者信息显示
+                const patientIdInput = document.getElementById('patient-id');
+                const patientNameDisplay = document.getElementById('patient-name-display');
+                const patientGenderDisplay = document.getElementById('patient-gender-display');
+                const patientAgeDisplay = document.getElementById('patient-age-display');
+                const patientRecordNoDisplay = document.getElementById('patient-record-no-display');
+                
+                if (patientIdInput) patientIdInput.value = selectedPatient.id;
+                if (patientNameDisplay) patientNameDisplay.textContent = selectedPatient.name || '未知患者';
+                if (patientGenderDisplay) patientGenderDisplay.textContent = selectedPatient.gender === 'male' ? '男' : (selectedPatient.gender === 'female' ? '女' : '-');
+                
+                // 计算年龄
+                if (selectedPatient.birthday || selectedPatient.birth_date) {
+                    const birthDate = new Date(selectedPatient.birthday || selectedPatient.birth_date);
+                    const age = new Date().getFullYear() - birthDate.getFullYear();
+                    if (patientAgeDisplay) patientAgeDisplay.textContent = age + '岁';
+                } else {
+                    if (patientAgeDisplay) patientAgeDisplay.textContent = '-';
+                }
+                
+                const recordNo = selectedPatient.medical_record_no || selectedPatient.patient_no || selectedPatient.record_no || '-';
+                if (patientRecordNoDisplay) patientRecordNoDisplay.textContent = recordNo;
+                
+                utils.showToast(`已选择患者：${selectedPatient.name}`, 'success');
+            }
+        });
+    } catch (error) {
+        console.error('选择患者失败:', error);
+        utils.showToast('选择患者失败', 'danger');
+    }
+};
+
+// 选择挂号记录（挂载到全局作用域）
+window.selectRegistration = async function() {
+    try {
+        const patientId = document.getElementById('patient-id')?.value;
+        if (!patientId) {
+            utils.showToast('请先选择患者', 'warning');
+            return;
+        }
+        
+        // 加载该患者的挂号记录（不限制status，获取所有状态的挂号）
+        // 注意：后端可能使用pending/completed/cancelled，不使用confirmed
+        console.log('开始获取挂号记录，患者ID:', patientId);
+        
+        const response = await RegistrationAPI.getList({
+            page: 1,
+            page_size: 100,
+            patient_id: patientId
+            // 不限制status，获取所有状态的挂号，然后在前端过滤
+        });
+        
+        console.log('挂号API响应:', response);
+        
+        let registrations = response.data?.items || response.items || response || [];
+        
+        console.log('获取到的挂号记录（原始）:', registrations);
+        
+        // 检查是否已有选中的挂号记录（编辑模式）
+        const existingRegistrationId = document.getElementById('registration-id')?.value;
+        console.log('已有挂号ID:', existingRegistrationId, '是否编辑模式:', isEdit);
+        
+        // 先过滤掉已取消和已完成的挂号，只保留pending（待就诊）状态的
+        // 但如果是编辑模式，也要包含已选择的挂号记录（即使状态不是pending）
+        registrations = registrations.filter(reg => {
+            const status = reg.status;
+            const regId = String(reg.id);
+            const isSelected = existingRegistrationId && String(existingRegistrationId) === regId;
+            // 只保留pending状态的挂号（待就诊），或者已选择的挂号记录
+            const isValid = status === 'pending' || isSelected;
+            console.log(`挂号 ${reg.id} 状态: ${status}, 是否已选择: ${isSelected}, 是否有效: ${isValid}`);
+            return isValid;
+        });
+        
+        console.log('过滤pending状态后的挂号记录:', registrations);
+        
+        // 如果是新建模式，过滤掉已有病历的挂号记录（未就医的挂号）
+        if (!isEdit) {
+            try {
+                const medicalRecordsResponse = await TreatmentAPI.getList({
+                    patient_id: patientId,
+                    page: 1,
+                    page_size: 1000
+                });
+                const medicalRecords = medicalRecordsResponse.data?.items || medicalRecordsResponse.items || [];
+                
+                console.log('获取到的病历记录:', medicalRecords);
+                
+                // 将registration_id转换为字符串Set，确保格式一致
+                const visitedRegistrationIds = new Set(
+                    medicalRecords
+                        .map(record => record.registration_id)
+                        .filter(id => id)
+                        .map(id => String(id)) // 确保都是字符串格式
+                );
+                
+                console.log('已有病历的挂号ID:', Array.from(visitedRegistrationIds));
+                
+                // 只保留没有对应病历的挂号记录（未就医）
+                // 确保比较时格式一致
+                registrations = registrations.filter(reg => {
+                    const regId = String(reg.id);
+                    const isVisited = visitedRegistrationIds.has(regId);
+                    console.log(`挂号 ${regId} 是否已就医: ${isVisited}`);
+                    return !isVisited;
+                });
+                
+                console.log('过滤后的挂号记录数量:', registrations.length);
+            } catch (error) {
+                console.warn('获取病历记录失败，显示所有pending状态的挂号记录:', error);
+                // 如果获取病历失败，仍然显示所有pending状态的挂号记录
+            }
+        }
+        
+        if (registrations.length === 0) {
+            utils.showToast('该患者暂无未就医的挂号记录（待就诊状态）', 'warning');
+            return;
+        }
+        
+        // 显示挂号选择器（使用简单的select弹窗）
+        const optionsHtml = registrations.map(reg => {
+            const date = reg.registration_date || reg.date || '未知日期';
+            const doctor = reg.doctor_name || '未知医生';
+            const dept = reg.department_name || '未知科室';
+            const isSelected = existingRegistrationId && String(existingRegistrationId) === String(reg.id);
+            return `<option value="${reg.id}" ${isSelected ? 'selected' : ''}>${date} - ${doctor} - ${dept}</option>`;
+        }).join('');
+        
+        const selectHtml = `
+            <div class="mb-3">
+                <label class="form-label">选择挂号记录</label>
+                <select class="form-select" id="registration-select-modal">
+                    <option value="">请选择挂号记录</option>
+                    ${optionsHtml}
+                </select>
+            </div>
+        `;
+        
+        const confirmed = await ModalComponents.showFormModal({
+            title: '选择挂号记录',
+            formHtml: selectHtml,
+            onSubmit: async () => {
+                const selectElement = document.getElementById('registration-select-modal');
+                const selectedId = selectElement?.value;
+                
+                if (!selectedId) {
+                    utils.showToast('请选择挂号记录', 'warning');
+                    return false;
+                }
+                
+                const selectedReg = registrations.find(r => String(r.id) === String(selectedId));
+                if (selectedReg) {
+                    document.getElementById('registration-id').value = selectedReg.id;
+                    const displayText = `${selectedReg.registration_date || selectedReg.date} - ${selectedReg.doctor_name || '未知医生'}`;
+                    document.getElementById('registration-display').value = displayText;
+                    
+                    // 自动填充医生和科室
+                    if (selectedReg.doctor_id) {
+                        const doctorSelect = document.getElementById('doctor-select');
+                        if (doctorSelect) {
+                            doctorSelect.value = selectedReg.doctor_id;
+                        }
+                    }
+                    if (selectedReg.department_id) {
+                        const deptSelect = document.getElementById('department-select');
+                        if (deptSelect) {
+                            deptSelect.value = selectedReg.department_id;
+                            loadDoctorsForMedicalRecord();
+                        }
+                    }
+                    
+                    utils.showToast('已选择挂号记录', 'success');
+                    return true;
+                }
+                return false;
+            }
+        });
+    } catch (error) {
+        console.error('选择挂号记录失败:', error);
+        utils.showToast('选择挂号记录失败: ' + (error.message || '未知错误'), 'danger');
+    }
+}
+
+// 添加处方项（可选功能，当前版本先不实现）
+async function addPrescriptionItem() {
+    utils.showToast('处方功能将在后续版本中实现', 'info');
+}
+
+// 加载病历数据
+async function loadRecordData() {
+    if (!recordId) {
+        console.warn('病历ID为空，无法加载数据');
+        return;
+    }
+    
+    const container = document.getElementById('medical-record-form-container');
+    if (!container) {
+        console.warn('表单容器未找到');
+        return;
+    }
+    
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        // 调用API获取病历详情
+        const response = await TreatmentAPI.getMedicalRecordDetail(recordId);
+        // API返回格式：{code: 200, data: {...}}，需要提取data字段
+        const record = response.data || response;
+        
+        if (!record || !record.id) {
+            utils.showToast('病历不存在', 'danger');
+            LoadingComponents.hide(loadingId);
+            return;
+        }
+        
+        // 填充患者信息
+        if (record.patient_id) {
+            document.getElementById('patient-id')?.setAttribute('value', record.patient_id);
+            // 获取患者详情并显示患者信息
+            try {
+                const patientResponse = await PatientAPI.getDetail(record.patient_id);
+                const patient = patientResponse.data || patientResponse;
+                if (patient) {
+                    const patientNameEl = document.getElementById('patient-name-display');
+                    const patientGenderEl = document.getElementById('patient-gender-display');
+                    const patientAgeEl = document.getElementById('patient-age-display');
+                    const patientRecordNoEl = document.getElementById('patient-record-no-display');
+                    
+                    if (patientNameEl) {
+                        patientNameEl.textContent = patient.name || patient.real_name || '-';
+                    }
+                    
+                    // 填充性别
+                    if (patientGenderEl) {
+                        const gender = patient.gender || patient.sex;
+                        if (gender === 'male' || gender === '男' || gender === 'M') {
+                            patientGenderEl.textContent = '男';
+                        } else if (gender === 'female' || gender === '女' || gender === 'F') {
+                            patientGenderEl.textContent = '女';
+                        } else {
+                            patientGenderEl.textContent = '-';
+                        }
+                    }
+                    
+                    // 填充年龄
+                    if (patientAgeEl) {
+                        if (patient.age) {
+                            patientAgeEl.textContent = patient.age + '岁';
+                        } else if (patient.birthday || patient.birth_date) {
+                            try {
+                                const birthDate = new Date(patient.birthday || patient.birth_date);
+                                const today = new Date();
+                                const age = today.getFullYear() - birthDate.getFullYear();
+                                const monthDiff = today.getMonth() - birthDate.getMonth();
+                                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                                    age--;
+                                }
+                                patientAgeEl.textContent = age + '岁';
+                            } catch (e) {
+                                patientAgeEl.textContent = '-';
+                            }
+                        } else {
+                            patientAgeEl.textContent = '-';
+                        }
+                    }
+                    
+                    // 填充病历号
+                    if (patientRecordNoEl) {
+                        const recordNo = patient.medical_record_no || patient.patient_no || patient.record_no || '-';
+                        patientRecordNoEl.textContent = recordNo;
+                    }
+                }
+            } catch (e) {
+                console.warn('获取患者信息失败:', e);
+            }
+        }
+        
+        // 填充科室和医生信息
+        if (record.doctor_id) {
+            // 先加载科室列表，然后设置科室和医生
+            try {
+                // 先获取医生信息
+                const doctorResponse = await DoctorAPI.getDetail(record.doctor_id);
+                const doctor = doctorResponse.data || doctorResponse;
+                if (doctor) {
+                    // 先加载科室列表
+                    await loadDepartmentsForForm();
+                    
+                    // 设置科室（需要先加载科室选项）
+                    if (doctor.department_id) {
+                        const departmentSelect = document.getElementById('department-select');
+                        if (departmentSelect) {
+                            // 延迟设置，确保科室选项已加载
+                            setTimeout(() => {
+                                departmentSelect.value = doctor.department_id;
+                                // 触发change事件，更新医生列表
+                                departmentSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                                
+                                // 再延迟设置医生，确保医生列表已更新
+                                setTimeout(() => {
+                                    const doctorSelect = document.getElementById('doctor-select');
+                                    if (doctorSelect && doctor.id) {
+                                        doctorSelect.value = doctor.id;
+                                    }
+                                }, 300);
+                            }, 300);
+                        }
+                    } else {
+                        // 如果没有科室ID，直接设置医生（可能需要先加载所有医生）
+                        setTimeout(() => {
+                            const doctorSelect = document.getElementById('doctor-select');
+                            if (doctorSelect && doctor.id) {
+                                doctorSelect.value = doctor.id;
+                            }
+                        }, 500);
+                    }
+                }
+            } catch (e) {
+                console.warn('获取医生信息失败:', e);
+            }
+        }
+        
+        // 填充挂号记录
+        if (record.registration_id) {
+            const registrationIdEl = document.getElementById('registration-id');
+            if (registrationIdEl) {
+                registrationIdEl.setAttribute('value', record.registration_id);
+            }
+            
+            // 获取挂号详情并显示
+            try {
+                const regResponse = await RegistrationAPI.getDetail(record.registration_id);
+                const registration = regResponse.data || regResponse;
+                if (registration) {
+                    // 更新显示字段
+                    const regDisplayEl = document.getElementById('registration-display');
+                    if (regDisplayEl) {
+                        const date = registration.registration_date || registration.date || '';
+                        const doctor = registration.doctor_name || '未知医生';
+                        regDisplayEl.value = `${date} - ${doctor}`;
+                    }
+                    
+                    const regNoEl = document.getElementById('registration-no-display');
+                    if (regNoEl) {
+                        regNoEl.textContent = registration.registration_no || '-';
+                    }
+                }
+            } catch (e) {
+                console.warn('获取挂号信息失败:', e);
+            }
+        }
+        
+        // 填充病历内容
+        if (record.chief_complaint) {
+            const chiefComplaintEl = document.getElementById('chief-complaint');
+            if (chiefComplaintEl) chiefComplaintEl.value = record.chief_complaint || '';
+        }
+        
+        if (record.present_illness) {
+            const presentIllnessEl = document.getElementById('present-illness');
+            if (presentIllnessEl) presentIllnessEl.value = record.present_illness || '';
+        }
+        
+        if (record.past_history) {
+            const pastHistoryEl = document.getElementById('past-history');
+            if (pastHistoryEl) pastHistoryEl.value = record.past_history || '';
+        }
+        
+        if (record.physical_examination) {
+            const physicalExamEl = document.getElementById('physical-examination');
+            if (physicalExamEl) physicalExamEl.value = record.physical_examination || '';
+        }
+        
+        if (record.diagnosis) {
+            const diagnosisEl = document.getElementById('diagnosis');
+            if (diagnosisEl) diagnosisEl.value = record.diagnosis || '';
+        }
+        
+        if (record.treatment_plan) {
+            const treatmentPlanEl = document.getElementById('treatment-plan');
+            if (treatmentPlanEl) treatmentPlanEl.value = record.treatment_plan || '';
+        }
+        
+        if (record.remark) {
+            const remarkEl = document.getElementById('remark');
+            if (remarkEl) remarkEl.value = record.remark || '';
+        }
+        
+        utils.showToast('病历数据加载成功', 'success');
+        
+    } catch (error) {
+        console.error('加载病历数据失败:', error);
+        const errorMsg = error.message || error.data?.message || '加载病历数据失败';
+        utils.showToast(errorMsg, 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 处理表单提交
+async function handleSubmit(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const form = e.target;
+    if (!form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+    }
+    
+    // 收集表单数据
+    const patientId = document.getElementById('patient-id')?.value;
+    const doctorId = document.getElementById('doctor-select')?.value;
+    const registrationId = document.getElementById('registration-id')?.value;
+    
+    // 验证必填字段
+    if (!patientId) {
+        utils.showToast('请选择患者', 'warning');
+        return;
+    }
+    if (!doctorId) {
+        utils.showToast('请选择医生', 'warning');
+        return;
+    }
+    if (!registrationId) {
+        utils.showToast('请选择挂号记录', 'warning');
+        return;
+    }
+    
+    // 构建提交数据（匹配后端API格式）
+    const data = {
+        registration_id: registrationId,
+        patient_id: patientId,
+        doctor_id: doctorId,
+        chief_complaint: document.getElementById('chief-complaint')?.value || null,
+        present_illness: document.getElementById('present-illness')?.value || null,
+        past_history: document.getElementById('past-history')?.value || null,
+        physical_examination: document.getElementById('physical-examination')?.value || null,
+        diagnosis: document.getElementById('diagnosis')?.value || null,
+        treatment_plan: document.getElementById('treatment-plan')?.value || null
+    };
+    
+    // 根据诊断类型添加相应字段
+    if (diagnosisType === 'tcm' || diagnosisType === 'combined') {
+        // 中医相关字段（如果需要，可以在后续版本中添加）
+        // data.tcm_syndrome = document.getElementById('tcm-syndrome')?.value || null;
+    }
+    
+    try {
+        if (isEdit) {
+            await TreatmentAPI.updateMedicalRecord(recordId, data);
+            utils.showToast('更新病历成功', 'success');
+            setTimeout(() => {
+                app.navigate('treatments');
+            }, 1000);
+        } else {
+            const response = await TreatmentAPI.createMedicalRecord(data);
+            utils.showToast('保存病历成功', 'success');
+            
+            // 保存成功后，提示是否开具处方
+            const confirmed = await ModalComponents.confirm({
+                title: '保存成功',
+                message: '病历已保存成功，是否开具处方？',
+                confirmText: '是，开具处方',
+                cancelText: '否，返回列表',
+                confirmType: 'success'
+            });
+            
+            if (confirmed) {
+                // 获取患者和医生信息，用于处方
+                const patientName = document.getElementById('patient-name-display')?.textContent || '';
+                const doctorName = document.getElementById('doctor-select')?.selectedOptions[0]?.text || '';
+                const patientIdValue = patientId;
+                const doctorIdValue = doctorId;
+                
+                // 跳转到新增处方页面，传递患者和医生信息
+                if (window.app && window.app.navigate) {
+                    const params = new URLSearchParams({
+                        patient_id: patientIdValue,
+                        doctor_id: doctorIdValue,
+                        patient_name: patientName,
+                        doctor_name: doctorName
+                    });
+                    window.app.navigate(`prescriptions?action=add&${params.toString()}`);
+                } else {
+                    window.location.href = `/views/treatments/prescriptions.html?action=add&patient_id=${patientIdValue}&doctor_id=${doctorIdValue}&patient_name=${encodeURIComponent(patientName)}&doctor_name=${encodeURIComponent(doctorName)}`;
+                }
+            } else {
+                // 返回列表
+                setTimeout(() => {
+                    app.navigate('treatments');
+                }, 500);
+            }
+        }
+        
+    } catch (error) {
+        console.error('保存病历失败:', error);
+        const errorMsg = error.message || error.data?.message || '保存病历失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+}
+</script>
+

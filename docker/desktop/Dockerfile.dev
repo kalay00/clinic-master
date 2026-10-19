@@ -1,0 +1,22 @@
+# 桌面端开发测试模式 Dockerfile
+# 仅用于本地/容器内开发联调：运行 vite dev server（带 HMR 热更新）。
+# 源码通过 compose 的 bind mount 挂入容器，依赖安装到匿名卷，避免覆盖镜像层。
+# 生产构建请使用 ./Dockerfile（多阶段 + nginx）。
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# 跳过 Electron / Puppeteer 二进制下载（开发联调不需要 electron 运行时）
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
+    PUPPETEER_SKIP_DOWNLOAD=1 \
+    NODE_OPTIONS=--max-old-space-size=2048
+
+# 使用国内镜像加速依赖安装
+RUN npm config set registry https://registry.npmmirror.com
+
+EXPOSE 5174
+
+# 依赖安装与启动都放到运行时（源码是 bind mount，node_modules 放匿名卷），
+# 这样改代码即时热更新，且不会把宿主机不完整的 node_modules 带进镜像。
+CMD ["sh", "-c", "npm install && npm run dev"]

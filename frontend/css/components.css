@@ -1,0 +1,65 @@
+/**
+ * 组件样式补充
+ */
+
+/* 选择器样式 */
+.patient-selector-item:hover,
+.drug-selector-item:hover {
+    background-color: #f8f9fa;
+    border-color: var(--primary-color) !important;
+}
+
+.patient-selector-item,
+.drug-selector-item {
+    transition: all 0.2s;
+}
+
+.patient-selector-item .card-body,
+.drug-selector-item .card-body {
+    padding: 0.75rem;
+}
+
+/* 处方项样式 */
+.prescription-item {
+    background-color: #f8f9fa;
+    transition: all 0.2s;
+}
+
+.prescription-item:hover {
+    background-color: #e9ecef;
+    border-color: var(--primary-color) !important;
+}
+
+.prescription-item .form-label {
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+/* 模态框样式优化 */
+.modal-lg .modal-body {
+    padding: 1.5rem;
+}
+
+/* 选择器列表滚动条 */
+#patient-selector-list::-webkit-scrollbar,
+#drug-selector-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#patient-selector-list::-webkit-scrollbar-track,
+#drug-selector-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+#patient-selector-list::-webkit-scrollbar-thumb,
+#drug-selector-list::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+}
+
+#patient-selector-list::-webkit-scrollbar-thumb:hover,
+#drug-selector-list::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+

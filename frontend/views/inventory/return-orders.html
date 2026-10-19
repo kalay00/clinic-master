@@ -1,0 +1,984 @@
+<!-- 退货单管理页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item active">退货单管理</li>
+        </ol>
+    </nav>
+    <h1><i class="bi bi-arrow-return-left"></i> 退货单管理</h1>
+</div>
+
+<!-- 操作按钮 -->
+<div class="action-buttons">
+    <button type="button" class="btn btn-primary" onclick="showAddReturnOrderModal()">
+        <i class="bi bi-plus-circle"></i> 新增退货单
+    </button>
+</div>
+
+<div class="container-fluid py-4">
+    <!-- 搜索栏 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="search-form" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">搜索关键词</label>
+                    <input type="text" class="form-control" id="search-keyword" placeholder="退货单号、采购单号">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">状态</label>
+                    <select class="form-select" id="search-status">
+                        <option value="">全部</option>
+                        <option value="draft">草稿</option>
+                        <option value="approved">已审核</option>
+                        <option value="completed">已完成</option>
+                        <option value="cancelled">已取消</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">开始日期</label>
+                    <input type="date" class="form-control" id="search-start-date">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">结束日期</label>
+                    <input type="date" class="form-control" id="search-end-date">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="resetSearch()">
+                        <i class="bi bi-arrow-clockwise"></i> 重置
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 退货单列表 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>退货单号</th>
+                            <th>采购单号</th>
+                            <th>退货日期</th>
+                            <th>总金额</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="return-orders-table-body">
+                        <tr>
+                            <td colspan="7" class="text-center">加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 分页 -->
+            <div id="pagination-container" class="mt-3"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+const pageSize = 10;
+let searchParams = {};
+let purchaseOrders = [];
+
+// 挂载到全局作用域，供SPA系统调用
+window.pageInit = async function() {
+    await loadPurchaseOrders();
+    loadReturnOrders();
+    
+    // 搜索表单提交
+    const searchForm = document.getElementById('search-form');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            currentPage = 1;
+            searchParams = {
+                keyword: document.getElementById('search-keyword').value,
+                status: document.getElementById('search-status').value,
+                start_date: document.getElementById('search-start-date').value,
+                end_date: document.getElementById('search-end-date').value
+            };
+            loadReturnOrders();
+        });
+    }
+};
+
+// 加载采购单列表（用于下拉选择）
+async function loadPurchaseOrders() {
+    try {
+        const response = await InventoryAPI.getPurchaseOrders({ page: 1, page_size: 1000, status: 'received' });
+        purchaseOrders = response.items || response.data?.items || [];
+    } catch (error) {
+        console.error('加载采购单列表失败:', error);
+    }
+}
+
+// 加载退货单列表（挂载到全局作用域）
+window.loadReturnOrders = async function() {
+    try {
+        const params = {
+            page: currentPage,
+            page_size: pageSize,
+            ...searchParams
+        };
+        
+        const response = await InventoryAPI.getReturnOrders(params);
+        const orders = response.items || response.data?.items || [];
+        const pagination = response.pagination || response.data?.pagination || {};
+        
+        renderReturnOrdersTable(orders);
+        renderPagination(pagination);
+    } catch (error) {
+        console.error('加载退货单列表失败:', error);
+        utils.showToast('加载退货单列表失败', 'danger');
+    }
+};
+
+// 渲染退货单表格
+function renderReturnOrdersTable(orders) {
+    const tbody = document.getElementById('return-orders-table-body');
+    if (!tbody) return;
+    
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">暂无数据</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = orders.map(order => {
+        const statusBadge = {
+            'draft': '<span class="badge bg-secondary">草稿</span>',
+            'approved': '<span class="badge bg-info">已审核</span>',
+            'completed': '<span class="badge bg-success">已完成</span>',
+            'cancelled': '<span class="badge bg-danger">已取消</span>'
+        }[order.status] || '<span class="badge bg-secondary">未知</span>';
+        
+        let actions = '';
+        if (order.status === 'draft') {
+            actions += `<button class="btn btn-sm btn-primary" onclick="editReturnOrder('${order.id}')">
+                <i class="bi bi-pencil"></i> 编辑
+            </button> `;
+            actions += `<button class="btn btn-sm btn-success" onclick="approveReturnOrder('${order.id}')">
+                <i class="bi bi-check-circle"></i> 审核
+            </button> `;
+            actions += `<button class="btn btn-sm btn-danger" onclick="deleteReturnOrder('${order.id}')">
+                <i class="bi bi-trash"></i> 删除
+            </button>`;
+        } else if (order.status === 'approved') {
+            actions += `<button class="btn btn-sm btn-success" onclick="completeReturnOrder('${order.id}')">
+                <i class="bi bi-check-circle"></i> 完成
+            </button> `;
+            actions += `<button class="btn btn-sm btn-warning" onclick="cancelReturnOrder('${order.id}')">
+                <i class="bi bi-x-circle"></i> 取消
+            </button>`;
+        }
+        actions += ` <button class="btn btn-sm btn-info" onclick="viewReturnOrder('${order.id}')">
+            <i class="bi bi-eye"></i> 查看
+        </button>`;
+        if (order.status === 'completed') {
+            actions += ` <button class="btn btn-sm btn-secondary" onclick="printReturnOrder('${order.id}')">
+                <i class="bi bi-printer"></i> 打印
+            </button>`;
+        }
+        
+        return `
+            <tr>
+                <td>${order.return_no || '-'}</td>
+                <td>${order.purchase_order_no || '-'}</td>
+                <td>${order.return_date || '-'}</td>
+                <td>¥${order.total_amount || 0}</td>
+                <td>${statusBadge}</td>
+                <td>${order.created_at ? new Date(order.created_at).toLocaleString() : '-'}</td>
+                <td>${actions}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// 渲染分页
+function renderPagination(pagination) {
+    const container = document.getElementById('pagination-container');
+    if (!pagination || pagination.pages <= 1) {
+        if (container) container.innerHTML = '';
+        return;
+    }
+    
+    let html = '<nav><ul class="pagination justify-content-center">';
+    
+    html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changePage(${currentPage - 1}); return false;">上一页</a>
+    </li>`;
+    
+    for (let i = 1; i <= pagination.pages; i++) {
+        if (i === 1 || i === pagination.pages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+            html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a>
+            </li>`;
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+            html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+        }
+    }
+    
+    html += `<li class="page-item ${currentPage === pagination.pages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="changePage(${currentPage + 1}); return false;">下一页</a>
+    </li>`;
+    
+    html += '</ul></nav>';
+    html += `<div class="text-center mt-2">共 ${pagination.total} 条记录</div>`;
+    
+    if (container) container.innerHTML = html;
+}
+
+// 切换页码（挂载到全局作用域）
+window.changePage = function(page) {
+    currentPage = page;
+    loadReturnOrders();
+};
+
+// 重置搜索（挂载到全局作用域）
+window.resetSearch = function() {
+    document.getElementById('search-keyword').value = '';
+    document.getElementById('search-status').value = '';
+    document.getElementById('search-start-date').value = '';
+    document.getElementById('search-end-date').value = '';
+    searchParams = {};
+    currentPage = 1;
+    loadReturnOrders();
+};
+
+// 显示新增退货单弹窗（挂载到全局作用域）
+window.showAddReturnOrderModal = async function() {
+    if (purchaseOrders.length === 0) {
+        await loadPurchaseOrders();
+    }
+    
+    const purchaseOrderOptions = [
+        { value: '', text: '请选择采购单' },
+        ...purchaseOrders.map(po => ({ value: po.id, text: `${po.order_no} - ${po.supplier_name || ''}` }))
+    ];
+    
+    const formHtml = `
+        ${FormComponents.createSelect({
+            id: 'add-purchase-order',
+            label: '采购单',
+            name: 'purchase_order_id',
+            options: purchaseOrderOptions,
+            required: true
+        })}
+        ${FormComponents.createInput({
+            id: 'add-return-date',
+            label: '退货日期',
+            name: 'return_date',
+            type: 'date',
+            value: new Date().toISOString().split('T')[0],
+            required: true
+        })}
+        <div class="mb-3">
+            <label class="form-label">退货明细</label>
+            <div id="return-items-container">
+                <div class="alert alert-info">请先选择采购单</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="selectAllItems()" id="select-all-btn" style="display:none;">
+                <i class="bi bi-check-all"></i> 全部退货
+            </button>
+        </div>
+        ${FormComponents.createTextarea({
+            id: 'add-remark',
+            label: '备注',
+            name: 'remark'
+        })}
+    `;
+    
+    await ModalComponents.showFormModal({
+        title: '新增退货单',
+        formHtml: formHtml,
+        size: 'xl',
+        onShow: (modalElement) => {
+            // 绑定采购单选择器的change事件
+            setTimeout(() => {
+                const purchaseOrderSelect = document.getElementById('add-purchase-order');
+                if (purchaseOrderSelect) {
+                    purchaseOrderSelect.addEventListener('change', async (e) => {
+                        const value = e.target.value;
+                        if (value) {
+                            await loadPurchaseOrderItems(value);
+                        } else {
+                            const container = document.getElementById('return-items-container');
+                            if (container) {
+                                container.innerHTML = '<div class="alert alert-info">请先选择采购单</div>';
+                            }
+                            const selectAllBtn = document.getElementById('select-all-btn');
+                            if (selectAllBtn) {
+                                selectAllBtn.style.display = 'none';
+                            }
+                        }
+                    });
+                }
+            }, 100);
+        },
+        onSubmit: async (formData) => {
+            try {
+                const purchaseOrderId = formData.purchase_order_id;
+                if (!purchaseOrderId) {
+                    utils.showToast('请选择采购单', 'warning');
+                    return false;
+                }
+                
+                // 收集退货明细数据
+                const items = [];
+                document.querySelectorAll('.return-item').forEach(item => {
+                    const checkbox = item.querySelector('.item-checkbox');
+                    if (checkbox && checkbox.checked) {
+                        const purchaseOrderItemId = checkbox.value;
+                        const quantityInput = item.querySelector('.item-quantity');
+                        const quantity = parseInt(quantityInput.value);
+                        
+                        if (quantity > 0) {
+                            items.push({
+                                purchase_order_item_id: purchaseOrderItemId,
+                                quantity: quantity,
+                                batch_no: item.querySelector('.item-batch')?.value || null,
+                                expiry_date: item.querySelector('.item-expiry')?.value || null
+                            });
+                        }
+                    }
+                });
+                
+                if (items.length === 0) {
+                    utils.showToast('请至少选择一条退货明细', 'warning');
+                    return false;
+                }
+                
+                const orderData = {
+                    purchase_order_id: purchaseOrderId,
+                    return_date: formData.return_date,
+                    items: items,
+                    remark: formData.remark || null
+                };
+                
+                await InventoryAPI.createReturnOrder(orderData);
+                utils.showToast('创建退货单成功', 'success');
+                loadReturnOrders();
+                return true;
+            } catch (error) {
+                console.error('创建退货单失败:', error);
+                const errorMsg = error.message || '创建退货单失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+};
+
+// 加载采购单明细
+async function loadPurchaseOrderItems(purchaseOrderId) {
+    try {
+        const response = await InventoryAPI.getReturnablePurchaseOrder(purchaseOrderId);
+        const data = response.data || response;
+        const items = data.items || [];
+        
+        const container = document.getElementById('return-items-container');
+        if (!container) return;
+        
+        if (items.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">该采购单没有可退货的药品</div>';
+            document.getElementById('select-all-btn').style.display = 'none';
+            return;
+        }
+        
+        let html = '<div class="table-responsive"><table class="table table-sm table-bordered">';
+        html += '<thead><tr><th width="50">选择</th><th>药品名称</th><th>已入库</th><th>已退货</th><th>可退货</th><th>退货数量</th><th>单价</th><th>批次号</th><th>有效期</th></tr></thead>';
+        html += '<tbody>';
+        
+        items.forEach(item => {
+            html += `
+                <tr class="return-item">
+                    <td>
+                        <input type="checkbox" class="form-check-input item-checkbox" value="${item.id}" onchange="updateItemRow(this)">
+                    </td>
+                    <td>${item.drug_name || '-'}</td>
+                    <td>${item.received_quantity}</td>
+                    <td>${item.returned_quantity}</td>
+                    <td><strong>${item.available_quantity}</strong></td>
+                    <td>
+                        <input type="number" class="form-control form-control-sm item-quantity" 
+                               min="1" max="${item.available_quantity}" value="${item.available_quantity}" 
+                               disabled onchange="updateItemTotal(this)">
+                    </td>
+                    <td>¥${item.unit_price}</td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm item-batch" 
+                               value="${item.batch_no || ''}" disabled>
+                    </td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm item-expiry" 
+                               value="${item.expiry_date || ''}" disabled>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        document.getElementById('select-all-btn').style.display = 'block';
+    } catch (error) {
+        console.error('加载采购单明细失败:', error);
+        utils.showToast('加载采购单明细失败', 'danger');
+    }
+}
+
+// 更新明细行状态
+window.updateItemRow = function(checkbox) {
+    const row = checkbox.closest('.return-item');
+    const quantityInput = row.querySelector('.item-quantity');
+    const batchInput = row.querySelector('.item-batch');
+    const expiryInput = row.querySelector('.item-expiry');
+    
+    if (checkbox.checked) {
+        quantityInput.disabled = false;
+        batchInput.disabled = false;
+        expiryInput.disabled = false;
+    } else {
+        quantityInput.disabled = true;
+        batchInput.disabled = true;
+        expiryInput.disabled = true;
+    }
+    updateItemTotal(quantityInput);
+};
+
+// 更新明细总金额
+window.updateItemTotal = function(input) {
+    const row = input.closest('.return-item');
+    const maxQuantity = parseInt(input.max);
+    const quantity = parseInt(input.value) || 0;
+    
+    if (quantity > maxQuantity) {
+        input.value = maxQuantity;
+        utils.showToast(`退货数量不能超过可退货数量(${maxQuantity})`, 'warning');
+    } else if (quantity < 1) {
+        input.value = 1;
+    }
+};
+
+// 选择全部明细
+window.selectAllItems = function() {
+    const container = document.getElementById('return-items-container');
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('.item-checkbox');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+        updateItemRow(checkbox);
+    });
+};
+
+// 选择全部明细（编辑模式）
+window.selectAllEditItems = function() {
+    const container = document.getElementById('edit-return-items-container');
+    if (!container) return;
+    const checkboxes = container.querySelectorAll('.item-checkbox');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+        updateItemRow(checkbox);
+    });
+};
+
+// 加载编辑模式的采购单明细
+async function loadEditPurchaseOrderItems(purchaseOrderId, returnItems) {
+    try {
+        const response = await InventoryAPI.getReturnablePurchaseOrder(purchaseOrderId);
+        const data = response.data || response;
+        const items = data.items || [];
+        
+        const container = document.getElementById('edit-return-items-container');
+        if (!container) return;
+        
+        if (items.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">该采购单没有可退货的药品</div>';
+            document.getElementById('edit-select-all-btn').style.display = 'none';
+            return;
+        }
+        
+        // 创建已退货数量映射
+        const returnedMap = {};
+        returnItems.forEach(ri => {
+            const poiId = ri.purchase_order_item_id;
+            if (!returnedMap[poiId]) {
+                returnedMap[poiId] = 0;
+            }
+            returnedMap[poiId] += ri.quantity;
+        });
+        
+        let html = '<div class="table-responsive"><table class="table table-sm table-bordered">';
+        html += '<thead><tr><th width="50">选择</th><th>药品名称</th><th>已入库</th><th>已退货</th><th>可退货</th><th>退货数量</th><th>单价</th><th>批次号</th><th>有效期</th></tr></thead>';
+        html += '<tbody>';
+        
+        items.forEach(item => {
+            const currentReturned = returnedMap[item.id] || 0;
+            const availableQty = item.available_quantity + currentReturned; // 加上当前退货单的数量
+            const isSelected = currentReturned > 0;
+            const returnQty = isSelected ? currentReturned : availableQty;
+            
+            html += `
+                <tr class="return-item">
+                    <td>
+                        <input type="checkbox" class="form-check-input item-checkbox" value="${item.id}" 
+                               ${isSelected ? 'checked' : ''} onchange="updateItemRow(this)">
+                    </td>
+                    <td>${item.drug_name || '-'}</td>
+                    <td>${item.received_quantity}</td>
+                    <td>${item.returned_quantity}</td>
+                    <td><strong>${availableQty}</strong></td>
+                    <td>
+                        <input type="number" class="form-control form-control-sm item-quantity" 
+                               min="1" max="${availableQty}" value="${returnQty}" 
+                               ${isSelected ? '' : 'disabled'} onchange="updateItemTotal(this)">
+                    </td>
+                    <td>¥${item.unit_price}</td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm item-batch" 
+                               value="${item.batch_no || ''}" ${isSelected ? '' : 'disabled'}>
+                    </td>
+                    <td>
+                        <input type="text" class="form-control form-control-sm item-expiry" 
+                               value="${item.expiry_date || ''}" ${isSelected ? '' : 'disabled'}>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        document.getElementById('edit-select-all-btn').style.display = 'block';
+        
+        // 更新已选择的行状态
+        container.querySelectorAll('.item-checkbox:checked').forEach(checkbox => {
+            updateItemRow(checkbox);
+        });
+    } catch (error) {
+        console.error('加载采购单明细失败:', error);
+        utils.showToast('加载采购单明细失败', 'danger');
+    }
+}
+
+// 查看退货单详情（挂载到全局作用域）
+window.viewReturnOrder = async function(id) {
+    try {
+        const response = await InventoryAPI.getReturnOrderDetail(id);
+        const order = response.data || response;
+        
+        let itemsHtml = '';
+        if (order.items && order.items.length > 0) {
+            itemsHtml = order.items.map(item => `
+                <tr>
+                    <td>${item.drug_name || '-'}</td>
+                    <td>${item.quantity}</td>
+                    <td>¥${item.unit_price}</td>
+                    <td>¥${item.total_amount}</td>
+                    <td>${item.batch_no || '-'}</td>
+                    <td>${item.expiry_date || '-'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        const modalHtml = `
+            <div class="mb-3">
+                <strong>退货单号：</strong>${order.return_no}
+            </div>
+            <div class="mb-3">
+                <strong>采购单号：</strong>${order.purchase_order_no || '-'}
+            </div>
+            <div class="mb-3">
+                <strong>退货日期：</strong>${order.return_date}
+            </div>
+            <div class="mb-3">
+                <strong>总金额：</strong>¥${order.total_amount}
+            </div>
+            <div class="mb-3">
+                <strong>状态：</strong>
+                <span class="badge ${order.status === 'draft' ? 'bg-secondary' : 
+                                 order.status === 'approved' ? 'bg-info' : 
+                                 order.status === 'completed' ? 'bg-success' : 'bg-danger'}">
+                    ${order.status === 'draft' ? '草稿' : 
+                     order.status === 'approved' ? '已审核' : 
+                     order.status === 'completed' ? '已完成' : '已取消'}
+                </span>
+            </div>
+            <div class="mb-3">
+                <strong>备注：</strong>${order.remark || '-'}
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>药品名称</th>
+                            <th>数量</th>
+                            <th>单价</th>
+                            <th>总金额</th>
+                            <th>批次号</th>
+                            <th>有效期</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        await ModalComponents.showInfoModal({
+            title: '退货单详情',
+            content: modalHtml,
+            size: 'lg'
+        });
+    } catch (error) {
+        console.error('获取退货单详情失败:', error);
+        utils.showToast('获取退货单详情失败', 'danger');
+    }
+};
+
+// 编辑退货单（挂载到全局作用域）
+window.editReturnOrder = async function(id) {
+    try {
+        const response = await InventoryAPI.getReturnOrderDetail(id);
+        const order = response.data || response;
+        
+        if (order.status !== 'draft') {
+            utils.showToast('只有草稿状态的退货单可以编辑', 'warning');
+            return;
+        }
+        
+        const purchaseOrderOptions = [
+            { value: order.purchase_order_id, text: `${order.purchase_order_no}`, selected: true }
+        ];
+        
+        const formHtml = `
+            ${FormComponents.createSelect({
+                id: 'edit-purchase-order',
+                label: '采购单',
+                name: 'purchase_order_id',
+                options: purchaseOrderOptions,
+                required: true,
+                disabled: true
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-return-date',
+                label: '退货日期',
+                name: 'return_date',
+                type: 'date',
+                value: order.return_date || new Date().toISOString().split('T')[0],
+                required: true
+            })}
+            <div class="mb-3">
+                <label class="form-label">退货明细</label>
+                <div id="edit-return-items-container">
+                    <div class="alert alert-info">加载中...</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="selectAllEditItems()" id="edit-select-all-btn" style="display:none;">
+                    <i class="bi bi-check-all"></i> 全部退货
+                </button>
+            </div>
+            ${FormComponents.createTextarea({
+                id: 'edit-remark',
+                label: '备注',
+                name: 'remark',
+                value: order.remark || ''
+            })}
+        `;
+        
+        await ModalComponents.showFormModal({
+            title: '编辑退货单',
+            formHtml: formHtml,
+            size: 'xl',
+            onShow: async () => {
+                // 加载采购单明细
+                await loadEditPurchaseOrderItems(order.purchase_order_id, order.items);
+            },
+            onSubmit: async (formData) => {
+                try {
+                    const items = [];
+                    const container = document.getElementById('edit-return-items-container');
+                    if (container) {
+                        container.querySelectorAll('.return-item').forEach(item => {
+                            const checkbox = item.querySelector('.item-checkbox');
+                            if (checkbox && checkbox.checked) {
+                                const purchaseOrderItemId = checkbox.value;
+                                const quantityInput = item.querySelector('.item-quantity');
+                                const quantity = parseInt(quantityInput.value);
+                                
+                                if (quantity > 0) {
+                                    items.push({
+                                        purchase_order_item_id: purchaseOrderItemId,
+                                        quantity: quantity,
+                                        batch_no: item.querySelector('.item-batch')?.value || null,
+                                        expiry_date: item.querySelector('.item-expiry')?.value || null
+                                    });
+                                }
+                            }
+                        });
+                    }
+                    
+                    if (items.length === 0) {
+                        utils.showToast('请至少选择一条退货明细', 'warning');
+                        return false;
+                    }
+                    
+                    const orderData = {
+                        return_date: formData.return_date,
+                        items: items,
+                        remark: formData.remark || null
+                    };
+                    
+                    await InventoryAPI.updateReturnOrder(id, orderData);
+                    utils.showToast('更新退货单成功', 'success');
+                    loadReturnOrders();
+                    return true;
+                } catch (error) {
+                    console.error('更新退货单失败:', error);
+                    const errorMsg = error.message || '更新退货单失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('获取退货单详情失败:', error);
+        utils.showToast('获取退货单详情失败', 'danger');
+    }
+};
+
+// 审核退货单（挂载到全局作用域）
+window.approveReturnOrder = async function(id) {
+    if (!confirm('确定要审核该退货单吗？')) {
+        return;
+    }
+    
+    try {
+        await InventoryAPI.approveReturnOrder(id);
+        utils.showToast('审核成功', 'success');
+        loadReturnOrders();
+    } catch (error) {
+        console.error('审核退货单失败:', error);
+        const errorMsg = error.message || '审核退货单失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+};
+
+// 完成退货单（挂载到全局作用域）
+window.completeReturnOrder = async function(id) {
+    if (!confirm('确定要完成该退货单吗？完成后将自动更新库存和创建财务记录。')) {
+        return;
+    }
+    
+    try {
+        await InventoryAPI.completeReturnOrder(id);
+        utils.showToast('完成退货单成功', 'success');
+        loadReturnOrders();
+    } catch (error) {
+        console.error('完成退货单失败:', error);
+        const errorMsg = error.message || '完成退货单失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+};
+
+// 取消退货单（挂载到全局作用域）
+window.cancelReturnOrder = async function(id) {
+    if (!confirm('确定要取消该退货单吗？')) {
+        return;
+    }
+    
+    try {
+        await InventoryAPI.cancelReturnOrder(id);
+        utils.showToast('取消退货单成功', 'success');
+        loadReturnOrders();
+    } catch (error) {
+        console.error('取消退货单失败:', error);
+        const errorMsg = error.message || '取消退货单失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+};
+
+// 删除退货单（挂载到全局作用域）
+window.deleteReturnOrder = async function(id) {
+    if (!confirm('确定要删除该退货单吗？')) {
+        return;
+    }
+    
+    try {
+        await InventoryAPI.deleteReturnOrder(id);
+        utils.showToast('删除退货单成功', 'success');
+        loadReturnOrders();
+    } catch (error) {
+        console.error('删除退货单失败:', error);
+        const errorMsg = error.message || '删除退货单失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+};
+
+// 打印退货单（挂载到全局作用域）
+window.printReturnOrder = async function(id) {
+    try {
+        // 获取退货单的默认打印模板
+        let selectedTemplateId = null;
+        try {
+            const templatesResponse = await PrintTemplateAPI.getList({ type: 'purchase_return', page: 1, page_size: 100 });
+            const templates = templatesResponse.items || templatesResponse.data?.items || [];
+            const defaultTemplate = templates.find(t => t.is_default);
+            if (defaultTemplate) {
+                selectedTemplateId = defaultTemplate.id;
+            } else if (templates.length > 0) {
+                selectedTemplateId = templates[0].id;
+            }
+        } catch (error) {
+            console.warn('获取打印模板失败:', error);
+        }
+        
+        if (selectedTemplateId) {
+            // 使用选中的模板打印
+            try {
+                const response = await PrintTemplateAPI.preview(selectedTemplateId, {
+                    data_type: 'purchase_return',
+                    data_id: id
+                });
+                
+                let html = '';
+                if (response && response.data && response.data.html) {
+                    html = response.data.html;
+                } else if (response && response.html) {
+                    html = response.html;
+                }
+                
+                if (html) {
+                    // 打开新窗口打印
+                    const printWindow = window.open('', '_blank');
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                    
+                    // 等待内容加载后打印
+                    printWindow.onload = function() {
+                        printWindow.print();
+                    };
+                } else {
+                    // 如果模板渲染失败，使用默认打印
+                    await printReturnOrderDefault(id);
+                }
+            } catch (error) {
+                console.error('使用模板打印失败:', error);
+                // 如果模板打印失败，使用默认打印
+                await printReturnOrderDefault(id);
+            }
+        } else {
+            // 使用默认打印
+            await printReturnOrderDefault(id);
+        }
+    } catch (error) {
+        console.error('打印退货单失败:', error);
+        utils.showToast('打印退货单失败', 'danger');
+    }
+};
+
+// 默认打印退货单（不使用模板）
+async function printReturnOrderDefault(id) {
+    try {
+        const response = await InventoryAPI.getReturnOrderDetail(id);
+        const order = response.data || response;
+        
+        let itemsHtml = '';
+        if (order.items && order.items.length > 0) {
+            itemsHtml = order.items.map(item => `
+                <tr>
+                    <td>${item.drug_name || '-'}</td>
+                    <td>${item.quantity}</td>
+                    <td>¥${item.unit_price}</td>
+                    <td>¥${item.total_amount}</td>
+                    <td>${item.batch_no || '-'}</td>
+                    <td>${item.expiry_date || '-'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        const printHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>退货单打印</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { margin: 0; }
+                    .info { margin-bottom: 20px; }
+                    .info table { width: 100%; border-collapse: collapse; }
+                    .info table td { padding: 5px; }
+                    .items { margin-top: 20px; }
+                    .items table { width: 100%; border-collapse: collapse; }
+                    .items table th, .items table td { border: 1px solid #000; padding: 8px; text-align: left; }
+                    .items table th { background-color: #f0f0f0; }
+                    .footer { margin-top: 30px; text-align: right; }
+                    @media print {
+                        body { padding: 0; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>退货单</h1>
+                </div>
+                <div class="info">
+                    <table>
+                        <tr><td><strong>退货单号：</strong>${order.return_no}</td></tr>
+                        <tr><td><strong>采购单号：</strong>${order.purchase_order_no || '-'}</td></tr>
+                        <tr><td><strong>退货日期：</strong>${order.return_date}</td></tr>
+                        <tr><td><strong>总金额：</strong>¥${order.total_amount}</td></tr>
+                        <tr><td><strong>备注：</strong>${order.remark || '-'}</td></tr>
+                    </table>
+                </div>
+                <div class="items">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>药品名称</th>
+                                <th>数量</th>
+                                <th>单价</th>
+                                <th>总金额</th>
+                                <th>批次号</th>
+                                <th>有效期</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsHtml}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="footer">
+                    <p>打印时间：${new Date().toLocaleString()}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printHtml);
+        printWindow.document.close();
+        printWindow.onload = function() {
+            printWindow.print();
+        };
+    } catch (error) {
+        console.error('默认打印失败:', error);
+        utils.showToast('打印失败', 'danger');
+    }
+}
+</script>
+

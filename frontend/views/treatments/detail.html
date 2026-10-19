@@ -1,0 +1,560 @@
+<!-- 病历详情页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('treatments')">诊疗管理</a></li>
+            <li class="breadcrumb-item active">病历详情</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-file-earmark-medical"></i> 病历详情</h1>
+        <div>
+            <button type="button" class="btn btn-info" onclick="if(window.printMedicalRecord) window.printMedicalRecord()">
+                <i class="bi bi-printer"></i> 打印
+            </button>
+            <span id="prescription-button-container">
+                <!-- 按钮将根据是否有处方动态显示 -->
+            </span>
+            <button type="button" class="btn btn-secondary" onclick="app.navigate('treatments')">
+                <i class="bi bi-arrow-left"></i> 返回
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="medical-record-detail-container"></div>
+
+<script>
+let recordId = null;
+
+window.pageInit = async function() {
+    // 从URL获取参数
+    let urlParams;
+    if (window.location.hash && window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        urlParams = new URLSearchParams(hashQuery);
+    } else {
+        urlParams = new URLSearchParams(window.location.search);
+    }
+    
+    recordId = urlParams.get('id');
+    if (!recordId) {
+        document.getElementById('medical-record-detail-container').innerHTML = 
+            '<div class="alert alert-danger">缺少病历ID参数</div>';
+        return;
+    }
+    
+    await loadRecordDetail();
+};
+
+// 加载病历详情
+async function loadRecordDetail() {
+    const container = document.getElementById('medical-record-detail-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        const response = await TreatmentAPI.getMedicalRecordDetail(recordId);
+        // 后端返回: {code: 200, data: {...}}
+        // api.get已经提取了data字段，所以response直接就是病历数据对象
+        // 但如果后端返回的是嵌套的data，需要再次提取
+        let record = null;
+        
+        if (response && response.id) {
+            // response直接就是病历对象
+            record = response;
+        } else if (response && response.data) {
+            // response是{data: {...}}
+            record = response.data;
+        } else {
+            record = response;
+        }
+        
+        console.log('病历详情API响应:', { 
+            responseType: typeof response,
+            hasId: !!record?.id,
+            record: record,
+            doctor_id: record?.doctor_id,
+            doctor_name: record?.doctor_name || '未找到'
+        });
+        
+        if (!record || !record.id) {
+            container.innerHTML = '<div class="alert alert-danger">病历不存在</div>';
+            return;
+        }
+        
+        // 格式化日期时间
+        const formatDateTime = (dateStr) => {
+            if (!dateStr) return '-';
+            try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return dateStr;
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            } catch (e) {
+                return dateStr;
+            }
+        };
+        
+        // 检查该病历是否已有处方
+        let existingPrescription = null;
+        try {
+            const prescriptionsResponse = await TreatmentAPI.getPrescriptions({
+                medical_record_id: recordId,
+                page: 1,
+                page_size: 1
+            });
+            const prescriptions = prescriptionsResponse.items || prescriptionsResponse.data?.items || [];
+            if (prescriptions.length > 0) {
+                existingPrescription = prescriptions[0];
+            }
+        } catch (error) {
+            console.warn('检查处方失败:', error);
+        }
+        
+        container.innerHTML = `
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-person"></i> 患者信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">患者姓名</label>
+                            <div class="fw-bold">${record.patient_name || '-'}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">病历号</label>
+                            <div>${record.registration_no || record.patient_no || '-'}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">就诊时间</label>
+                            <div>${formatDateTime(record.created_at)}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted">医生</label>
+                            <div>${record.doctor_name || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-chat-dots"></i> 主诉</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">${record.chief_complaint || '-'}</p>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> 现病史</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">${record.present_illness || '-'}</p>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-file-medical"></i> 既往史</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">${record.past_history || '-'}</p>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> 体格检查</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">${record.physical_examination || '-'}</p>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-heart-pulse"></i> 诊断</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">${record.diagnosis || '-'}</p>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> 治疗方案</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">${record.treatment_plan || '-'}</p>
+                </div>
+            </div>
+            
+            ${record.remark ? `
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-sticky"></i> 备注</h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">${record.remark}</p>
+                </div>
+            </div>
+            ` : ''}
+        `;
+        
+        // 更新处方按钮显示
+        const prescriptionButtonContainer = document.getElementById('prescription-button-container');
+        if (prescriptionButtonContainer) {
+            if (existingPrescription) {
+                // 如果已有处方，显示"查看处方"按钮
+                prescriptionButtonContainer.innerHTML = `
+                    <button type="button" class="btn btn-success" onclick="if(window.app && window.app.navigate) window.app.navigate('treatments/prescription-detail?id=${existingPrescription.id}')">
+                        <i class="bi bi-eye"></i> 查看处方
+                    </button>
+                `;
+            } else {
+                // 如果没有处方，显示"开具处方"按钮
+                prescriptionButtonContainer.innerHTML = `
+                    <button type="button" class="btn btn-success" onclick="if(window.createPrescriptionFromRecord) window.createPrescriptionFromRecord()">
+                        <i class="bi bi-prescription"></i> 开具处方
+                    </button>
+                `;
+            }
+        }
+        
+    } catch (error) {
+        console.error('加载病历详情失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载病历详情失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 从病历开具处方（挂载到全局作用域）
+window.createPrescriptionFromRecord = async function() {
+    if (!recordId) {
+        utils.showToast('病历ID不存在', 'danger');
+        return;
+    }
+    
+    try {
+        // 获取病历详情
+        const response = await TreatmentAPI.getMedicalRecordDetail(recordId);
+        let record = null;
+        if (response && response.id) {
+            record = response;
+        } else if (response && response.data) {
+            record = response.data;
+        } else {
+            record = response;
+        }
+        
+        if (!record || !record.id) {
+            utils.showToast('获取病历详情失败', 'danger');
+            return;
+        }
+        
+        // 检查是否有患者ID和医生ID
+        if (!record.patient_id || !record.doctor_id) {
+            utils.showToast('病历信息不完整，无法开具处方', 'danger');
+            return;
+        }
+        
+        // 跳转到处方创建页面，并传递病历ID
+        if (window.app && window.app.navigate) {
+            window.app.navigate(`prescriptions?action=add&medical_record_id=${recordId}&patient_id=${record.patient_id}&doctor_id=${record.doctor_id}`);
+        } else {
+            window.location.href = `/views/treatments/prescriptions.html?action=add&medical_record_id=${recordId}&patient_id=${record.patient_id}&doctor_id=${record.doctor_id}`;
+        }
+    } catch (error) {
+        console.error('获取病历详情失败:', error);
+        utils.showToast('获取病历详情失败: ' + (error.message || '未知错误'), 'danger');
+    }
+};
+
+// 打印病历（挂载到全局作用域）
+window.printMedicalRecord = async function() {
+    if (!recordId) return;
+    
+    try {
+        // 加载打印模板列表
+        let printTemplates = [];
+        let selectedTemplateId = null;
+        
+        try {
+            const templateResponse = await PrintTemplateAPI.getList({
+                page: 1,
+                page_size: 100,
+                type: 'medical_record'
+            });
+            
+            let items = [];
+            if (templateResponse && templateResponse.data) {
+                items = templateResponse.data.items || [];
+            } else if (templateResponse && templateResponse.items) {
+                items = templateResponse.items || [];
+            }
+            
+            printTemplates = items;
+            
+            // 如果有模板，显示选择对话框
+            if (printTemplates.length > 0) {
+                const templateSelected = await new Promise((resolve) => {
+                    const modalElement = document.createElement('div');
+                    modalElement.className = 'modal fade';
+                    modalElement.id = 'template-select-modal-print';
+                    modalElement.innerHTML = `
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">选择打印模板</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">选择打印模板</label>
+                                        <select class="form-select" id="template-select-modal">
+                                            <option value="">使用默认模板</option>
+                                            ${printTemplates.map(t => `
+                                                <option value="${t.id}" ${t.is_default ? 'selected' : ''}>
+                                                    ${t.name} ${t.is_default ? '(默认)' : ''}
+                                                </option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                    <button type="button" class="btn btn-primary" id="confirm-template-select">确认</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modalElement);
+                    
+                    const modal = new bootstrap.Modal(modalElement);
+                    
+                    document.getElementById('confirm-template-select').addEventListener('click', () => {
+                        const select = document.getElementById('template-select-modal');
+                        const value = select ? select.value || null : null;
+                        modal.hide();
+                        modalElement.remove();
+                        resolve(value);
+                    });
+                    
+                    modalElement.addEventListener('hidden.bs.modal', () => {
+                        modalElement.remove();
+                        resolve(null);
+                    });
+                    
+                    modal.show();
+                });
+                
+                if (templateSelected === null) {
+                    return; // 用户取消
+                }
+                
+                selectedTemplateId = templateSelected;
+            }
+            
+            // 如果选择了模板，使用模板打印
+            if (selectedTemplateId) {
+                const previewResponse = await PrintTemplateAPI.preview(selectedTemplateId, {
+                    data_type: 'medical_record',
+                    data_id: recordId
+                });
+                
+                let html = '';
+                if (previewResponse && previewResponse.data && previewResponse.data.html) {
+                    html = previewResponse.data.html;
+                } else if (previewResponse && previewResponse.html) {
+                    html = previewResponse.html;
+                }
+                
+                if (html) {
+                    const printWindow = window.open('', '_blank');
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                    printWindow.onload = function() {
+                        printWindow.print();
+                    };
+                    return;
+                }
+            }
+        } catch (templateError) {
+            console.warn('加载打印模板失败，使用默认打印:', templateError);
+            // 继续使用默认打印
+        }
+        
+        // 使用默认打印
+        const response = await TreatmentAPI.getMedicalRecordDetail(recordId);
+        // API返回格式：{code: 200, data: {...}}，需要提取data字段
+        let record = null;
+        if (response && response.id) {
+            record = response;
+        } else if (response && response.data) {
+            record = response.data;
+        } else {
+            record = response;
+        }
+        
+        if (!record || !record.id) {
+            utils.showToast('获取病历详情失败', 'danger');
+            return;
+        }
+        
+        // 打开新窗口显示打印内容
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>病历打印</title>
+                <meta charset="UTF-8">
+                <style>
+                    body {
+                        font-family: "Microsoft YaHei", Arial, sans-serif;
+                        padding: 20px;
+                        line-height: 1.6;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 2px solid #000;
+                        padding-bottom: 10px;
+                    }
+                    .header h1 {
+                        margin: 0;
+                        font-size: 24px;
+                    }
+                    .section {
+                        margin-bottom: 20px;
+                    }
+                    .section-title {
+                        font-weight: bold;
+                        font-size: 16px;
+                        margin-bottom: 10px;
+                        border-left: 4px solid #007bff;
+                        padding-left: 10px;
+                    }
+                    .section-content {
+                        padding-left: 20px;
+                        white-space: pre-wrap;
+                    }
+                    .info-row {
+                        display: flex;
+                        margin-bottom: 10px;
+                    }
+                    .info-label {
+                        width: 100px;
+                        font-weight: bold;
+                    }
+                    .info-value {
+                        flex: 1;
+                    }
+                    @media print {
+                        body { margin: 0; padding: 15px; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>门诊病历</h1>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">患者信息</div>
+                    <div class="section-content">
+                        <div class="info-row">
+                            <div class="info-label">患者姓名：</div>
+                            <div class="info-value">${record.patient_name || '-'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">病历号：</div>
+                            <div class="info-value">${record.registration_no || record.patient_no || '-'}</div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-label">就诊时间：</div>
+                            <div class="info-value">${record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">医生信息</div>
+                    <div class="section-content">
+                        <div class="info-row">
+                            <div class="info-label">医生：</div>
+                            <div class="info-value">${record.doctor_name || '-'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">主诉</div>
+                    <div class="section-content">${record.chief_complaint || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">现病史</div>
+                    <div class="section-content">${record.present_illness || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">既往史</div>
+                    <div class="section-content">${record.past_history || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">体格检查</div>
+                    <div class="section-content">${record.physical_examination || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">诊断</div>
+                    <div class="section-content">${record.diagnosis || '-'}</div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">治疗方案</div>
+                    <div class="section-content">${record.treatment_plan || '-'}</div>
+                </div>
+                
+                ${record.remark ? `
+                <div class="section">
+                    <div class="section-title">备注</div>
+                    <div class="section-content">${record.remark}</div>
+                </div>
+                ` : ''}
+                
+                <div style="margin-top: 40px; text-align: right;">
+                    <div>医生签名：${record.doctor_name || ''}</div>
+                    <div>日期：${record.created_at ? new Date(record.created_at).toLocaleDateString('zh-CN') : ''}</div>
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    };
+                <\/script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    } catch (error) {
+        console.error('打印病历失败:', error);
+        utils.showToast('打印病历失败: ' + (error.message || '未知错误'), 'danger');
+    }
+};
+</script>
+

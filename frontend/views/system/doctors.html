@@ -1,0 +1,598 @@
+<!-- 医生管理页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('system')">系统管理</a></li>
+            <li class="breadcrumb-item active">医生管理</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-person-badge"></i> 医生管理</h1>
+        <div class="text-muted">
+            <small>提示：新增医生请在"用户管理"中创建用户，角色选择"医生"后，可在此编辑医生详细信息</small>
+        </div>
+    </div>
+</div>
+
+<!-- 搜索栏 -->
+<div id="search-container"></div>
+
+<!-- 医生列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">医生列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="doctors-table-container"></div>
+        <div id="doctors-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+let searchKeyword = '';
+
+window.pageInit = function() {
+    if (window.initSearchBar) {
+        window.initSearchBar();
+    }
+    if (window.loadDoctors) {
+        window.loadDoctors();
+    }
+};
+
+// 初始化搜索栏（挂载到全局作用域）
+window.initSearchBar = async function() {
+    const container = document.getElementById('search-container');
+    if (!container) {
+        console.warn('search-container元素未找到，跳过搜索栏初始化');
+        return;
+    }
+    
+    // 加载科室列表
+    let departmentOptions = [{ value: '', text: '全部' }];
+    try {
+        const deptsResponse = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+        const depts = deptsResponse.items || [];
+        departmentOptions = [
+            { value: '', text: '全部' },
+            ...depts.map(dept => ({ value: dept.id, text: dept.name }))
+        ];
+    } catch (e) {
+        console.error('加载科室列表失败:', e);
+    }
+    
+    container.innerHTML = SearchComponents.createSearchBar({
+        id: 'doctor-search',
+        placeholder: '请输入医生姓名、工号搜索...',
+        onSearch: (keyword) => {
+            searchKeyword = keyword;
+            currentPage = 1;
+            if (window.loadDoctors) {
+                window.loadDoctors();
+            }
+        },
+        filters: [
+            {
+                type: 'select',
+                id: 'department-filter',
+                label: '科室',
+                options: departmentOptions,
+                onChange: () => {
+                    currentPage = 1;
+                    if (window.loadDoctors) {
+                        window.loadDoctors();
+                    }
+                }
+            }
+        ]
+    });
+}
+
+// 加载医生列表（挂载到全局作用域）
+window.loadDoctors = async function() {
+    const container = document.getElementById('doctors-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        const departmentId = document.getElementById('department-filter')?.value || '';
+        
+        // 调用实际API
+        const response = await DoctorAPI.getList({
+            page: currentPage,
+            page_size: pageSize,
+            keyword: searchKeyword,
+            department_id: departmentId
+        });
+        
+        // 处理后端响应格式
+        let mockData = {
+            items: [],
+            total: 0,
+            page: currentPage,
+            page_size: pageSize,
+            total_pages: 0
+        };
+        
+        // 解析响应数据
+        if (response && response.data) {
+            // 标准响应格式 {code, message, data: {items, pagination}}
+            if (response.data.items) {
+                mockData.items = response.data.items;
+            }
+            if (response.data.pagination) {
+                mockData.total = response.data.pagination.total || 0;
+                mockData.page = response.data.pagination.page || currentPage;
+                mockData.page_size = response.data.pagination.page_size || pageSize;
+                mockData.total_pages = response.data.pagination.pages || 0;
+            }
+        } else if (response && response.items) {
+            // 直接返回items数组
+            mockData.items = response.items;
+            if (response.pagination) {
+                mockData.total = response.pagination.total || 0;
+                mockData.page = response.pagination.page || currentPage;
+                mockData.page_size = response.pagination.page_size || pageSize;
+                mockData.total_pages = response.pagination.pages || 0;
+            }
+        } else if (Array.isArray(response)) {
+            // 直接是数组
+            mockData.items = response;
+            mockData.total = response.length;
+        }
+        
+        // 如果没有数据，显示空状态（不再使用模拟数据，避免UUID格式问题）
+        if (mockData.items.length === 0) {
+            // 不添加模拟数据，让表格显示空状态
+        }
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'doctors-table',
+            columns: [
+                {
+                    title: '工号',
+                    key: 'employee_no',
+                    align: 'center'
+                },
+                {
+                    title: '姓名',
+                    key: 'name',
+                    align: 'center'
+                },
+                {
+                    title: '科室',
+                    key: 'department',
+                    align: 'center',
+                    render: (row) => row.department_name || row.department || '-'
+                },
+                {
+                    title: '职称',
+                    key: 'title',
+                    align: 'center'
+                },
+                {
+                    title: '联系电话',
+                    key: 'phone',
+                    align: 'center'
+                },
+                {
+                    title: '状态',
+                    key: 'status',
+                    align: 'center',
+                    render: (row) => {
+                        const statusClass = row.status === 'active' ? 'success' : 'danger';
+                        const statusText = row.status === 'active' ? '在职' : '离职';
+                        return `<span class="badge bg-${statusClass}">${statusText}</span>`;
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    render: (row) => `
+                        <button class="btn btn-sm btn-outline-primary" onclick="if(window.viewDoctor) window.viewDoctor('${row.id}')">
+                            <i class="bi bi-eye"></i> 查看
+                        </button>
+                        <button class="btn btn-sm btn-outline-success ms-1" onclick="if(window.editDoctor) window.editDoctor('${row.id}')">
+                            <i class="bi bi-pencil"></i> 编辑
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger ms-1" onclick="if(window.deleteDoctor) window.deleteDoctor('${row.id}')">
+                            <i class="bi bi-trash"></i> 删除
+                        </button>
+                    `
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无医生数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('doctors-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    if (window.loadDoctors) {
+                        window.loadDoctors();
+                    }
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载医生列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载医生列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示新增医生弹窗（已移除，新增医生请在用户管理中创建用户，角色选择"医生"）
+// 新增医生功能已取消，请在"用户管理"中创建用户，角色选择"医生"后，可在此编辑医生详细信息
+/*
+window.showAddDoctorModal = async function() {
+    // ... 已移除的新增医生功能代码 ...
+}
+*/
+
+// 查看医生详情（挂载到全局作用域）
+window.viewDoctor = async function(id) {
+    try {
+        const doctorResponse = await DoctorAPI.getDetail(id);
+        // 处理响应数据格式
+        const doctor = doctorResponse.data || doctorResponse;
+        
+        const modalHtml = `
+            <div class="row">
+                ${doctor.photo_url ? `
+                <div class="col-12 mb-3 text-center">
+                    <img src="${doctor.photo_url}" alt="医生照片" class="img-thumbnail" style="max-width: 200px; max-height: 200px; border-radius: 8px;" />
+                </div>
+                ` : ''}
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">工号</label>
+                    <div class="fw-bold">${doctor.employee_no || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">姓名</label>
+                    <div class="fw-bold">${doctor.name || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">科室</label>
+                    <div class="fw-bold">${doctor.department_name || doctor.department || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">职称</label>
+                    <div class="fw-bold">${doctor.title || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">联系电话</label>
+                    <div class="fw-bold">${doctor.phone || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">邮箱</label>
+                    <div class="fw-bold">${doctor.email || '-'}</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">状态</label>
+                    <div>
+                        <span class="badge bg-${doctor.status === 'active' ? 'success' : 'danger'}">
+                            ${doctor.status === 'active' ? '在职' : '离职'}
+                        </span>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label text-muted">默认挂号费</label>
+                    <div class="fw-bold">¥${(doctor.registration_fee || 0).toFixed(2)}</div>
+                </div>
+                ${doctor.bio ? `
+                <div class="col-12 mb-3">
+                    <label class="form-label text-muted">医生简介</label>
+                    <div class="fw-normal">${doctor.bio}</div>
+                </div>
+                ` : ''}
+            </div>
+        `;
+        
+        await ModalComponents.showInfoModal({
+            title: '医生详情',
+            content: modalHtml,
+            size: 'lg'
+        });
+    } catch (error) {
+        console.error('查看医生详情失败:', error);
+        utils.showToast('查看医生详情失败', 'danger');
+    }
+}
+
+// 编辑医生（挂载到全局作用域）
+window.editDoctor = async function(id) {
+    try {
+        const doctor = await DoctorAPI.getDetail(id);
+        
+        // 加载科室列表
+        let departmentOptions = [{ value: '', text: '请选择' }];
+        try {
+            const deptsResponse = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+            const depts = deptsResponse.items || [];
+            departmentOptions = [
+                { value: '', text: '请选择' },
+                ...depts.map(dept => ({
+                    value: dept.id,
+                    text: dept.name,
+                    selected: dept.id === doctor.department_id
+                }))
+            ];
+        } catch (e) {
+            console.error('加载科室列表失败:', e);
+        }
+        
+        // 职称选项
+        const titleOptions = [
+            { value: '', text: '请选择' },
+            { value: '主任医师', text: '主任医师', selected: doctor.title === '主任医师' },
+            { value: '副主任医师', text: '副主任医师', selected: doctor.title === '副主任医师' },
+            { value: '主治医师', text: '主治医师', selected: doctor.title === '主治医师' },
+            { value: '住院医师', text: '住院医师', selected: doctor.title === '住院医师' }
+        ];
+        
+        // 使用两列布局，缩短表单长度
+        const formHtml = `
+            <div class="row">
+                <div class="col-md-6">
+                    ${FormComponents.createInput({
+                        id: 'doctor-name-edit',
+                        label: '姓名',
+                        name: 'name',
+                        value: doctor.name || '',
+                        required: true,
+                        placeholder: '请输入医生姓名'
+                    })}
+                </div>
+                <div class="col-md-6">
+                    ${FormComponents.createInput({
+                        id: 'doctor-employee-no-edit',
+                        label: '工号',
+                        name: 'employee_no',
+                        value: doctor.employee_no || '',
+                        required: true,
+                        placeholder: '请输入工号',
+                        readonly: true
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    ${FormComponents.createSelect({
+                        id: 'doctor-department-edit',
+                        label: '科室',
+                        name: 'department_id',
+                        value: doctor.department_id || '',
+                        required: true,
+                        options: departmentOptions
+                    })}
+                </div>
+                <div class="col-md-6">
+                    ${FormComponents.createSelect({
+                        id: 'doctor-title-edit',
+                        label: '职称',
+                        name: 'title',
+                        value: doctor.title || '',
+                        options: titleOptions
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    ${FormComponents.createInput({
+                        id: 'doctor-phone-edit',
+                        label: '联系电话',
+                        name: 'phone',
+                        value: doctor.phone || '',
+                        placeholder: '请输入联系电话'
+                    })}
+                </div>
+                <div class="col-md-6">
+                    ${FormComponents.createInput({
+                        id: 'doctor-email-edit',
+                        label: '邮箱',
+                        name: 'email',
+                        type: 'email',
+                        value: doctor.email || '',
+                        placeholder: '请输入邮箱'
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    ${FormComponents.createInput({
+                        id: 'doctor-registration-fee-edit',
+                        label: '默认挂号费（元）',
+                        name: 'registration_fee',
+                        type: 'number',
+                        step: '0.01',
+                        min: '0',
+                        value: doctor.registration_fee || '0.00',
+                        placeholder: '请输入默认挂号费'
+                    })}
+                </div>
+                <div class="col-md-6">
+                    ${FormComponents.createSelect({
+                        id: 'doctor-status-edit',
+                        label: '状态',
+                        name: 'status',
+                        value: doctor.status || 'active',
+                        options: [
+                            { value: 'active', text: '在职', selected: doctor.status === 'active' },
+                            { value: 'inactive', text: '离职', selected: doctor.status === 'inactive' }
+                        ]
+                    })}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    ${FormComponents.createTextarea({
+                        id: 'doctor-bio-edit',
+                        label: '医生简介',
+                        name: 'bio',
+                        rows: 3,
+                        value: doctor.bio || '',
+                        placeholder: '请输入医生简介（可选）'
+                    })}
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">医生照片</label>
+                        <input type="file" class="form-control" id="doctor-photo-edit" accept="image/*" />
+                        <div class="form-text">支持jpg、jpeg、png、gif、webp格式，最大5MB</div>
+                        <div id="doctor-photo-preview-edit" class="mt-2" style="cursor: pointer; display: inline-block;">
+                            ${doctor.photo_url ? `<img id="doctor-photo-preview-img-edit" src="${doctor.photo_url}" alt="当前照片" style="max-width: 150px; max-height: 150px; border-radius: 4px; border: 2px solid #ddd;" title="点击重新上传" />` : '<div class="text-muted mt-2">暂无照片，点击上传</div>'}
+                        </div>
+                    </div>
+                    <input type="hidden" id="doctor-photo-url-edit" name="photo_url" value="${doctor.photo_url || ''}" />
+                </div>
+            </div>
+        `;
+        
+        await ModalComponents.showFormModal({
+            title: '编辑医生',
+            formHtml: formHtml,
+            size: 'lg',
+            onShow: (modalElement) => {
+                // 照片上传预览
+                const photoInput = modalElement.querySelector('#doctor-photo-edit');
+                const photoPreview = modalElement.querySelector('#doctor-photo-preview-edit');
+                const photoPreviewImg = modalElement.querySelector('#doctor-photo-preview-img-edit');
+                const photoUrlInput = modalElement.querySelector('#doctor-photo-url-edit');
+                
+                // 点击照片预览区域，触发文件选择
+                if (photoPreview) {
+                    photoPreview.addEventListener('click', () => {
+                        if (photoInput) {
+                            photoInput.click();
+                        }
+                    });
+                }
+                
+                if (photoInput) {
+                    photoInput.addEventListener('change', async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            // 验证文件大小（5MB）
+                            if (file.size > 5 * 1024 * 1024) {
+                                utils.showToast('图片大小不能超过5MB', 'danger');
+                                e.target.value = '';
+                                return;
+                            }
+                            
+                            // 显示预览
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                if (!photoPreviewImg) {
+                                    const img = document.createElement('img');
+                                    img.id = 'doctor-photo-preview-img-edit';
+                                    img.src = e.target.result;
+                                    img.alt = '预览';
+                                    img.style.cssText = 'max-width: 200px; max-height: 200px; border-radius: 4px;';
+                                    photoPreview.innerHTML = '';
+                                    photoPreview.appendChild(img);
+                                } else {
+                                    photoPreviewImg.src = e.target.result;
+                                }
+                            };
+                            reader.readAsDataURL(file);
+                            
+                            // 上传文件
+                            try {
+                                const uploadResult = await UploadAPI.uploadImage(file);
+                                if (uploadResult.data && uploadResult.data.url) {
+                                    photoUrlInput.value = uploadResult.data.url;
+                                    utils.showToast('照片上传成功', 'success');
+                                }
+                            } catch (error) {
+                                console.error('上传照片失败:', error);
+                                utils.showToast('上传照片失败', 'danger');
+                                e.target.value = '';
+                            }
+                        }
+                    });
+                }
+            },
+            onSubmit: async (data) => {
+                try {
+                    // 验证默认挂号费：允许小数点，但不允许小数点前面为零（如0.5）
+                    if (data.registration_fee !== undefined && data.registration_fee !== null && data.registration_fee !== '') {
+                        const feeStr = String(data.registration_fee).trim();
+                        const feeValue = parseFloat(feeStr);
+                        
+                        if (!isNaN(feeValue)) {
+                            // 确保值大于等于0
+                            if (feeValue < 0) {
+                                utils.showToast('默认挂号费不能为负数', 'danger');
+                                return false;
+                            }
+                            
+                            // 检查是否以0.开头且值在0到1之间（不允许0.5这样的格式）
+                            // 允许0或0.0（表示免费），但不允许0.5、0.10等
+                            if (feeValue > 0 && feeValue < 1 && /^0\.\d+$/.test(feeStr)) {
+                                utils.showToast('默认挂号费不允许小数点前面为零（如0.5），请输入大于等于1的数值或0（免费）', 'danger');
+                                return false;
+                            }
+                        }
+                    }
+                    
+                    await DoctorAPI.update(id, data);
+                    utils.showToast('更新医生成功', 'success');
+                    if (window.loadDoctors) {
+                        window.loadDoctors();
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('更新医生失败:', error);
+                    const errorMsg = error.message || '更新医生失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('加载医生信息失败:', error);
+        utils.showToast('加载医生信息失败', 'danger');
+    }
+}
+
+// 删除医生（挂载到全局作用域）
+window.deleteDoctor = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '确认删除',
+        message: '确定要删除该医生吗？',
+        confirmText: '删除',
+        confirmType: 'danger'
+    });
+    
+    if (confirmed) {
+        try {
+            await DoctorAPI.delete(id);
+            utils.showToast('删除医生成功', 'success');
+            if (window.loadDoctors) {
+                window.loadDoctors();
+            }
+        } catch (error) {
+            console.error('删除医生失败:', error);
+            const errorMsg = error.message || '删除医生失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+</script>
+

@@ -1,0 +1,186 @@
+@import './variables.scss';
+
+// 全局 Element Plus 主题变量：紫蓝色主色
+:root {
+  --el-color-primary: #5b7cff;
+  --el-color-primary-light-3: #8aa4ff;
+  --el-color-primary-light-5: #b0c2ff;
+  --el-color-primary-light-7: #d6e1ff;
+  --el-color-primary-light-8: #e8eeff;
+  --el-color-primary-light-9: #f4f7ff;
+  --el-color-primary-dark-2: #3d5fd9;
+  --el-border-radius-base: 6px;
+  --el-bg-color-page: #f5f7fa;
+}
+
+// Element Plus 按钮样式覆盖 - 使用 CSS 变量直接设置
+.el-button {
+  font-weight: 500;
+  border-radius: 6px;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #5b7cff;
+  --el-button-border-color: #5b7cff;
+  --el-button-hover-bg-color: #7a96ff;
+  --el-button-hover-border-color: #7a96ff;
+  --el-button-active-bg-color: #4a6be0;
+  --el-button-active-border-color: #4a6be0;
+  --el-button-text-color: #ffffff;
+  background-color: #5b7cff;
+  border-color: #5b7cff;
+  color: #ffffff;
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background-color: #7a96ff;
+  border-color: #7a96ff;
+  color: #ffffff;
+}
+
+.el-button--primary:active {
+  background-color: #4a6be0;
+  border-color: #4a6be0;
+  color: #ffffff;
+}
+
+// 成功按钮改为截图中的青绿色
+.el-button--success {
+  --el-button-bg-color: #4cd1a4;
+  --el-button-border-color: #4cd1a4;
+  --el-button-hover-bg-color: #6fdebb;
+  --el-button-hover-border-color: #6fdebb;
+  --el-button-active-bg-color: #3cb88e;
+  --el-button-active-border-color: #3cb88e;
+  background-color: #4cd1a4;
+  border-color: #4cd1a4;
+}
+
+// 警告按钮改为截图中的橙黄色
+.el-button--warning {
+  --el-button-bg-color: #ffb347;
+  --el-button-border-color: #ffb347;
+  --el-button-hover-bg-color: #ffc670;
+  --el-button-hover-border-color: #ffc670;
+  --el-button-active-bg-color: #e69a2e;
+  --el-button-active-border-color: #e69a2e;
+  background-color: #ffb347;
+  border-color: #ffb347;
+}
+
+.el-menu {
+  border-right: none !important;
+}
+
+// 表格：浅蓝紫色表头 + 白色内容
+.el-table {
+  --el-table-header-bg-color: #e8eeff;
+  --el-table-header-text-color: #333;
+  --el-table-border-color: #eef0f4;
+  --el-table-row-hover-bg-color: #f4f7ff;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+  background-color: #e8eeff !important;
+}
+
+.el-table .el-table__cell {
+  padding: 10px 0;
+}
+
+.el-dialog {
+  --el-dialog-border-radius: #{$border-radius-lg};
+}
+
+.el-card {
+  --el-card-border-radius: #{$border-radius-lg};
+  border: none;
+  box-shadow: #{$shadow-sm};
+}
+
+.el-input__wrapper,
+.el-select__wrapper {
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px #c0c4cc inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px #5b7cff inset;
+}
+
+.el-textarea__inner {
+  border-radius: #{$border-radius-base};
+}
+
+.pagination-container {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: $spacing-base;
+}
+
+.search-bar {
+  background: $bg-color-white;
+  padding: $spacing-base;
+  border-radius: $border-radius-lg;
+  margin-bottom: $spacing-base;
+  box-shadow: $shadow-sm;
+}
+
+// 标签页样式
+.el-tabs__item.is-active {
+  color: #5b7cff;
+}
+
+.el-tabs__active-bar {
+  background-color: #5b7cff;
+}
+
+// 分页当前页
+.el-pagination.is-background .el-pager li.is-active {
+  background-color: #5b7cff;
+}
+
+// 表单必填红星
+.el-form-item.is-required > .el-form-item__label::before {
+  color: #ff6b6b;
+}
+
+// 卡片页面标题
+.page-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #5b7cff;
+  margin-bottom: 16px;
+  position: relative;
+  padding-left: 12px;
+}
+
+.page-section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  border-radius: 2px;
+  background: #5b7cff;
+}
+
+.page-main-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 16px;
+  padding-left: 12px;
+  border-left: 4px solid #5b7cff;
+}

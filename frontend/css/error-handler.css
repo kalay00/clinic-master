@@ -1,0 +1,252 @@
+/**
+ * 错误提示组件样式
+ * 优化Toast通知的用户体验
+ */
+
+/* Toast容器 */
+.toast-container {
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.toast-container > * {
+    pointer-events: auto;
+}
+
+/* Toast基础样式 */
+.toast {
+    min-width: 300px;
+    max-width: 500px;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    position: relative;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Toast关闭动画 */
+.toast.hide {
+    animation: slideOutRight 0.3s ease-in;
+}
+
+@keyframes slideOutRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Toast内容 */
+.toast-body {
+    padding: 1rem;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.toast-body strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 15px;
+}
+
+.toast-body i {
+    font-size: 16px;
+}
+
+/* Toast进度条 */
+.toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    width: 100%;
+    overflow: hidden;
+}
+
+.toast-progress-bar {
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    width: 100%;
+    transition: width linear;
+}
+
+/* Toast操作按钮 */
+.toast-body .btn {
+    margin-top: 0.5rem;
+    font-size: 12px;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Toast关闭按钮 */
+.toast .btn-close {
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.toast .btn-close:hover {
+    opacity: 1;
+}
+
+/* 不同位置的Toast容器 */
+.toast-container.position-fixed.top-0.start-0 {
+    top: 1rem;
+    left: 1rem;
+}
+
+.toast-container.position-fixed.top-0.end-0 {
+    top: 1rem;
+    right: 1rem;
+}
+
+.toast-container.position-fixed.top-0.start-50 {
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.toast-container.position-fixed.bottom-0.start-0 {
+    bottom: 1rem;
+    left: 1rem;
+}
+
+.toast-container.position-fixed.bottom-0.end-0 {
+    bottom: 1rem;
+    right: 1rem;
+}
+
+.toast-container.position-fixed.bottom-0.start-50 {
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* Toast类型样式优化 */
+.toast.bg-success {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+}
+
+.toast.bg-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+}
+
+.toast.bg-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%) !important;
+    color: #000 !important;
+}
+
+.toast.bg-warning .btn-close {
+    filter: invert(1);
+}
+
+.toast.bg-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%) !important;
+}
+
+/* Toast计数徽章 */
+.toast-body .badge {
+    margin-left: 0.5rem;
+    font-size: 11px;
+    padding: 0.2rem 0.4rem;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .toast {
+        min-width: 280px;
+        max-width: 90vw;
+    }
+    
+    .toast-container {
+        padding: 0.5rem !important;
+    }
+    
+    .toast-container.position-fixed.top-0.end-0,
+    .toast-container.position-fixed.bottom-0.end-0 {
+        right: 0.5rem;
+    }
+}
+
+/* Toast悬停效果 */
+.toast:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+    transition: all 0.2s ease;
+}
+
+/* 多个Toast堆叠效果 */
+.toast-container .toast:not(:last-child) {
+    margin-bottom: 0.75rem;
+}
+
+/* 加载状态Toast */
+.toast.loading .toast-body::before {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* 成功Toast图标动画 */
+.toast.bg-success i.bi-check-circle-fill {
+    animation: checkmark 0.5s ease-out;
+}
+
+@keyframes checkmark {
+    0% {
+        transform: scale(0);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* 错误Toast图标动画 */
+.toast.bg-danger i.bi-x-circle-fill {
+    animation: shake 0.5s ease-out;
+}
+
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-5px);
+    }
+    75% {
+        transform: translateX(5px);
+    }
+}
+

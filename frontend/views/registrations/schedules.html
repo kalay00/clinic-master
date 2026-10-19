@@ -1,0 +1,1044 @@
+<!-- 排班管理页面 -->
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('dashboard')">首页</a></li>
+            <li class="breadcrumb-item"><a href="#" onclick="app.navigate('registrations')">挂号管理</a></li>
+            <li class="breadcrumb-item active">排班管理</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1><i class="bi bi-calendar3"></i> 排班管理</h1>
+        <button type="button" class="btn btn-primary" onclick="showAddScheduleModal()">
+            <i class="bi bi-plus-circle"></i> 新增排班
+        </button>
+    </div>
+</div>
+
+<!-- 筛选条件 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">科室</label>
+                <select class="form-select" id="department-filter" onchange="if(window.loadSchedules) window.loadSchedules()">
+                    <option value="">全部科室</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">医生</label>
+                <select class="form-select" id="doctor-filter" onchange="if(window.loadSchedules) window.loadSchedules()">
+                    <option value="">全部医生</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">日期筛选</label>
+                <input type="date" class="form-control" id="date-filter" onchange="if(window.loadSchedules) window.loadSchedules()">
+                <div class="form-text text-muted small">留空显示未来一周，选择日期查看该日排班</div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">&nbsp;</label>
+                <button type="button" class="btn btn-secondary w-100" onclick="if(window.resetFilters) window.resetFilters()">
+                    <i class="bi bi-arrow-clockwise"></i> 重置
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 排班列表 -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">排班列表</h5>
+    </div>
+    <div class="card-body">
+        <div id="schedules-table-container"></div>
+        <div id="schedules-pagination-container" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let pageSize = 10;
+
+window.pageInit = async function() {
+    // 不设置默认日期，让用户可以选择日期或留空查看未来一周
+    // dateFilter留空时，默认查询未来一周的数据
+    
+    // 加载科室和医生列表到筛选器
+    try {
+        // 加载科室列表
+        const deptResponse = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+        const departmentFilter = document.getElementById('department-filter');
+        if (departmentFilter && deptResponse.items) {
+            deptResponse.items.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept.id;
+                option.textContent = dept.name || dept.department_name || '未命名科室';
+                departmentFilter.appendChild(option);
+            });
+        }
+        
+        // 加载医生列表（初始加载所有医生，后续根据科室筛选联动）
+        const doctorResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+        const doctorFilter = document.getElementById('doctor-filter');
+        if (doctorFilter) {
+            const doctors = doctorResponse.data?.items || doctorResponse.items || [];
+            doctors.forEach(doctor => {
+                const option = document.createElement('option');
+                option.value = doctor.id;
+                option.textContent = doctor.name || doctor.doctor_name || '未命名医生';
+                option.setAttribute('data-department-id', doctor.department_id || '');
+                doctorFilter.appendChild(option);
+            });
+            
+            // 科室筛选联动
+            const departmentFilter = document.getElementById('department-filter');
+            if (departmentFilter) {
+                departmentFilter.addEventListener('change', function() {
+                    const selectedDeptId = this.value;
+                    const options = doctorFilter.querySelectorAll('option');
+                    options.forEach(option => {
+                        if (option.value === '') {
+                            // 保留"全部医生"选项
+                            option.style.display = '';
+                        } else {
+                            const deptId = option.getAttribute('data-department-id');
+                            if (selectedDeptId === '' || deptId === selectedDeptId) {
+                                option.style.display = '';
+                            } else {
+                                option.style.display = 'none';
+                            }
+                        }
+                    });
+                    // 如果当前选中的医生不在筛选后的列表中，清空选择
+                    const selectedOption = doctorFilter.options[doctorFilter.selectedIndex];
+                    if (selectedOption && selectedOption.style.display === 'none') {
+                        doctorFilter.value = '';
+                    }
+                });
+            }
+        }
+    } catch (error) {
+        console.error('加载筛选器选项失败:', error);
+    }
+    
+    if (window.loadSchedules) {
+        window.loadSchedules();
+    }
+};
+
+// 加载排班列表（挂载到全局作用域）
+window.loadSchedules = async function() {
+    const container = document.getElementById('schedules-table-container');
+    const loadingId = LoadingComponents.show('加载中...', container);
+    
+    try {
+        const departmentId = document.getElementById('department-filter').value;
+        const doctorId = document.getElementById('doctor-filter').value;
+        const dateFilter = document.getElementById('date-filter');
+        const selectedDate = dateFilter ? dateFilter.value : null;
+        
+        // 计算日期范围：默认显示未来一周（从今天开始，到7天后）
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 6); // 未来7天（包括今天）
+        
+        const startDateStr = todayStr;
+        const endDateStr = endDate.toISOString().split('T')[0];
+        
+        // 构建查询参数（仅在确有筛选值时附加，避免把空值序列化为 'undefined' 传给后端）
+        const params = {
+            page: currentPage,
+            page_size: pageSize
+        };
+        if (departmentId) params.department_id = departmentId;
+        if (doctorId) params.doctor_id = doctorId;
+        
+        // 如果用户选择了特定日期，则只查询该日期
+        // 否则查询未来一周（从今天开始，到7天后）
+        if (selectedDate) {
+            // 用户选择了日期，只查询该日期
+            params.date = selectedDate;
+        } else {
+            // 默认查询未来一周（从今天开始，到7天后）
+            params.start_date = startDateStr;
+            params.end_date = endDateStr;
+        }
+        
+        console.log('loadSchedules: 查询参数', params);
+        
+        // 调用实际API
+        const response = await RegistrationAPI.getSchedules(params);
+        
+        // 处理后端响应格式
+        // 后端返回: {code: 200, data: {items: [...], pagination: {...}}}
+        // api.get已经提取了data字段，所以response = {items: [...], pagination: {...}}
+        let items = [];
+        let pagination = {};
+        
+        if (response) {
+            if (response.items && Array.isArray(response.items)) {
+                // response直接就是{items: [...], pagination: {...}}
+                items = response.items;
+                pagination = response.pagination || {};
+            } else if (response.data) {
+                // response是{data: {items: [...], pagination: {...}}}
+                if (response.data.items && Array.isArray(response.data.items)) {
+                    items = response.data.items;
+                    pagination = response.data.pagination || {};
+                } else if (Array.isArray(response.data)) {
+                    items = response.data;
+                }
+            } else if (Array.isArray(response)) {
+                items = response;
+            }
+        }
+        
+        console.log('排班列表API响应:', {
+            responseType: typeof response,
+            hasItems: !!items.length,
+            itemsCount: items.length,
+            firstItem: items[0] || null,
+            pagination: pagination
+        });
+        
+        const mockData = {
+            items: items,
+            total: pagination?.total || items.length,
+            page: pagination?.page || currentPage,
+            page_size: pagination?.page_size || pageSize,
+            total_pages: pagination?.pages || Math.ceil((pagination?.total || items.length) / pageSize)
+        };
+        
+        // 渲染表格
+        container.innerHTML = TableComponents.renderTable({
+            id: 'schedules-table',
+            columns: [
+                {
+                    title: '医生',
+                    key: 'doctor_name',
+                    align: 'center',
+                    render: (row) => row.doctor_name || '未知医生'
+                },
+                {
+                    title: '科室',
+                    key: 'department_name',
+                    align: 'center',
+                    render: (row) => row.department_name || row.department || '未知科室'
+                },
+                {
+                    title: '日期',
+                    key: 'schedule_date',
+                    align: 'center',
+                    render: (row) => {
+                        const dateStr = row.schedule_date || row.date || '';
+                        if (!dateStr) return '-';
+                        return dateStr.split('T')[0];
+                    }
+                },
+                {
+                    title: '时间段',
+                    key: 'time_slot_text',
+                    align: 'center',
+                    render: (row) => {
+                        const timeSlot = row.time_slot || '';
+                        const timeSlotText = row.time_slot_text || '';
+                        const startTime = row.start_time || '';
+                        const endTime = row.end_time || '';
+                        
+                        // 根据time_slot显示中文
+                        let displayText = '';
+                        if (timeSlot === 'morning') {
+                            displayText = '上午';
+                        } else if (timeSlot === 'afternoon') {
+                            displayText = '下午';
+                        } else if (timeSlot === 'full_day') {
+                            displayText = '全天';
+                        } else if (timeSlotText) {
+                            displayText = timeSlotText;
+                        } else {
+                            displayText = timeSlot || '-';
+                        }
+                        
+                        // 如果有时间范围，显示时间范围
+                        if (startTime && endTime) {
+                            const start = startTime.substring(0, 5); // 只取HH:mm
+                            const end = endTime.substring(0, 5);
+                            return `${displayText} (${start}-${end})`;
+                        }
+                        
+                        return displayText || '-';
+                    }
+                },
+                {
+                    title: '总号源',
+                    key: 'total_quota',
+                    align: 'center',
+                    render: (row) => row.total_quota || row.total_slots || 0
+                },
+                {
+                    title: '已预约',
+                    key: 'used_quota',
+                    align: 'center',
+                    render: (row) => row.used_quota || row.booked_slots || 0
+                },
+                {
+                    title: '剩余',
+                    key: 'available_quota',
+                    align: 'center',
+                    render: (row) => {
+                        const available = row.available_quota || row.available_slots || 
+                            ((row.total_quota || row.total_slots || 0) - (row.used_quota || row.booked_slots || 0));
+                        const className = available === 0 ? 'text-danger fw-bold' : '';
+                        return `<span class="${className}">${available}</span>`;
+                    }
+                },
+                {
+                    title: '挂号费',
+                    key: 'price',
+                    align: 'right',
+                    render: (row) => {
+                        const price = row.price || 0;
+                        return `<span class="fw-bold text-primary">¥${parseFloat(price).toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: '状态',
+                    key: 'status',
+                    align: 'center',
+                    render: (row) => {
+                        const status = row.status || 'active';
+                        let statusClass = 'success';
+                        let statusText = '正常';
+                        if (status === 'paused') {
+                            statusClass = 'warning';
+                            statusText = '暂停';
+                        } else if (status === 'cancelled') {
+                            statusClass = 'danger';
+                            statusText = '取消';
+                        } else if (status !== 'active') {
+                            statusClass = 'secondary';
+                            statusText = status;
+                        }
+                        return `<span class="badge bg-${statusClass}">${statusText}</span>`;
+                    }
+                },
+                {
+                    title: '操作',
+                    key: 'actions',
+                    align: 'center',
+                    width: '280px',
+                    render: (row) => {
+                        const status = row.status || 'active';
+                        const pauseBtn = status === 'active' 
+                            ? `<button class="btn btn-sm btn-outline-warning ms-1" onclick="if(window.pauseSchedule) window.pauseSchedule('${row.id}')" title="暂停挂号">
+                                <i class="bi bi-pause-circle"></i> 暂停
+                            </button>`
+                            : `<button class="btn btn-sm btn-outline-success ms-1" onclick="if(window.resumeSchedule) window.resumeSchedule('${row.id}')" title="恢复挂号">
+                                <i class="bi bi-play-circle"></i> 恢复
+                            </button>`;
+                        return `
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="if(window.editSchedule) window.editSchedule('${row.id}')" title="编辑">
+                                    <i class="bi bi-pencil"></i> 编辑
+                                </button>
+                                ${pauseBtn}
+                                <button class="btn btn-sm btn-outline-info ms-1" onclick="if(window.swapSchedule) window.swapSchedule('${row.id}')" title="换班">
+                                    <i class="bi bi-arrow-left-right"></i> 换班
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger ms-1" onclick="if(window.deleteSchedule) window.deleteSchedule('${row.id}')" title="删除">
+                                    <i class="bi bi-trash"></i> 删除
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
+            ],
+            data: mockData.items,
+            emptyText: '暂无排班数据'
+        });
+        
+        // 渲染分页
+        const paginationContainer = document.getElementById('schedules-pagination-container');
+        if (mockData.total_pages > 1) {
+            paginationContainer.innerHTML = TableComponents.renderPagination({
+                currentPage: mockData.page,
+                totalPages: mockData.total_pages,
+                totalItems: mockData.total,
+                pageSize: mockData.page_size,
+                onPageChange: (page) => {
+                    currentPage = page;
+                    if (window.loadSchedules) {
+                        window.loadSchedules();
+                    }
+                }
+            });
+        } else {
+            paginationContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('加载排班列表失败:', error);
+        container.innerHTML = '<div class="alert alert-danger">加载失败，请刷新重试</div>';
+        utils.showToast('加载排班列表失败', 'danger');
+    } finally {
+        LoadingComponents.hide(loadingId);
+    }
+}
+
+// 显示新增排班弹窗（挂载到全局作用域）
+// 更新医生列表的辅助函数（挂载到全局作用域）
+window.updateDoctorList = async function(departmentId, doctorSelect, currentDoctorId = null) {
+    if (!departmentId) {
+        console.warn('updateDoctorList: departmentId为空');
+        return;
+    }
+    
+    try {
+        console.log('updateDoctorList: 开始加载医生列表', { departmentId });
+        
+        // 根据科室加载医生列表
+        const doctorResponse = await DoctorAPI.getList({ 
+            page: 1, 
+            page_size: 100,
+            department_id: departmentId
+        });
+        
+        console.log('updateDoctorList: API响应', doctorResponse);
+        console.log('updateDoctorList: API响应类型', typeof doctorResponse);
+        console.log('updateDoctorList: API响应结构', {
+            hasData: !!doctorResponse?.data,
+            hasItems: !!doctorResponse?.items,
+            isArray: Array.isArray(doctorResponse),
+            dataType: doctorResponse?.data ? typeof doctorResponse.data : 'no data',
+            dataItems: doctorResponse?.data?.items ? doctorResponse.data.items.length : 'no items'
+        });
+        
+        // 处理不同的响应格式
+        // ApiClient.request 返回 data.data || data，所以实际得到的是 {items: [...], pagination: {...}}
+        // 或者完整的响应对象 {code: 200, message: "success", data: {items: [...], pagination: {...}}}
+        let doctors = [];
+        if (doctorResponse && doctorResponse.items) {
+            // 最常见的情况：ApiClient已经提取了data，所以直接使用items
+            doctors = doctorResponse.items;
+            console.log('updateDoctorList: 使用items格式', doctors.length);
+        } else if (doctorResponse && doctorResponse.data && doctorResponse.data.items) {
+            // 如果ApiClient没有提取data，使用data.items
+            doctors = doctorResponse.data.items;
+            console.log('updateDoctorList: 使用data.items格式', doctors.length);
+        } else if (Array.isArray(doctorResponse)) {
+            // 直接返回数组
+            doctors = doctorResponse;
+            console.log('updateDoctorList: 使用数组格式', doctors.length);
+        } else {
+            console.warn('updateDoctorList: 无法解析响应格式', doctorResponse);
+        }
+        
+        console.log('updateDoctorList: 解析后的医生列表', doctors);
+        
+        // 清空现有选项（保留第一个"请选择医生"选项）
+        doctorSelect.innerHTML = '<option value="">请选择医生</option>';
+        
+        if (doctors.length === 0) {
+            console.warn('updateDoctorList: 该科室下没有医生');
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '该科室暂无医生';
+            doctorSelect.appendChild(option);
+            return;
+        }
+        
+        doctors.forEach(doctor => {
+            const option = document.createElement('option');
+            option.value = doctor.id;
+            option.textContent = doctor.name || doctor.doctor_name || '未命名医生';
+            doctorSelect.appendChild(option);
+        });
+        
+        console.log('updateDoctorList: 已添加', doctors.length, '个医生选项');
+        
+        // 如果之前选择的医生还在新列表中，保持选中
+        if (currentDoctorId) {
+            doctorSelect.value = currentDoctorId;
+        }
+    } catch (error) {
+        console.error('updateDoctorList: 加载医生列表失败', error);
+        utils.showToast('加载医生列表失败: ' + (error.message || '未知错误'), 'warning');
+    }
+}
+
+window.showAddScheduleModal = async function() {
+    // 先加载科室列表（不加载全部医生，等选择科室后再加载）
+    let departmentOptions = [{ value: '', text: '请选择科室' }];
+    
+    try {
+        // 获取科室列表
+        const deptResponse = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+        if (deptResponse.items && deptResponse.items.length > 0) {
+            departmentOptions = [
+                { value: '', text: '请选择科室' },
+                ...deptResponse.items.map(dept => ({
+                    value: dept.id,
+                    text: dept.name || dept.department_name || '未命名科室'
+                }))
+            ];
+        }
+    } catch (error) {
+        console.error('加载科室列表失败:', error);
+        utils.showToast('加载科室列表失败，请稍后重试', 'warning');
+    }
+    
+    // 医生选项初始为空，等选择科室后再加载
+    let doctorOptions = [{ value: '', text: '请先选择科室' }];
+    
+    const formHtml = `
+        ${FormComponents.createSelect({
+            id: 'schedule-department',
+            label: '科室',
+            name: 'department_id',
+            required: true,
+            options: departmentOptions
+        })}
+        ${FormComponents.createSelect({
+            id: 'schedule-doctor',
+            label: '医生',
+            name: 'doctor_id',
+            required: true,
+            options: doctorOptions
+        })}
+        ${FormComponents.createDatePicker({
+            id: 'schedule-date',
+            label: '日期',
+            name: 'date',
+            required: true
+        })}
+        ${FormComponents.createSelect({
+            id: 'schedule-time-slot',
+            label: '时间段',
+            name: 'time_slot',
+            required: true,
+            options: [
+                { value: 'morning', text: '上午 (09:00-12:00)' },
+                { value: 'afternoon', text: '下午 (14:00-17:00)' },
+                { value: 'full_day', text: '全天 (09:00-17:00)' }
+            ]
+        })}
+        ${FormComponents.createInput({
+            id: 'schedule-total-slots',
+            label: '总号源数',
+            name: 'total_slots',
+            type: 'number',
+            required: true,
+            placeholder: '请输入总号源数'
+        })}
+        <div class="mb-3">
+            <label class="form-label">挂号费（元）</label>
+            <input type="number" class="form-control" id="schedule-price" name="price" 
+                   step="0.01" min="0" placeholder="留空则使用医生默认挂号费">
+            <div class="form-text">留空则使用该医生的默认挂号费，设置后优先使用此价格</div>
+            <div id="doctor-default-fee-hint" class="form-text text-muted" style="display: none;"></div>
+        </div>
+    `;
+    
+    const result = await ModalComponents.showFormModal({
+        title: '新增排班',
+        formHtml: formHtml,
+        size: 'lg',
+        onShow: () => {
+            console.log('onShow: 模态框显示回调开始执行');
+            
+            // 使用setTimeout确保DOM已完全渲染
+            setTimeout(() => {
+                // 科室和医生联动
+                const departmentSelect = document.getElementById('schedule-department');
+                const doctorSelect = document.getElementById('schedule-doctor');
+                
+                console.log('onShow: 查找元素', { 
+                    hasDepartmentSelect: !!departmentSelect, 
+                    hasDoctorSelect: !!doctorSelect,
+                    departmentSelectId: departmentSelect?.id,
+                    doctorSelectId: doctorSelect?.id
+                });
+                
+                if (departmentSelect && doctorSelect) {
+                    console.log('onShow: 初始化科室和医生联动', { 
+                        hasDepartmentSelect: !!departmentSelect, 
+                        hasDoctorSelect: !!doctorSelect 
+                    });
+                    
+                    // 初始时，如果已选择科室，则只显示该科室的医生
+                    const initialDepartmentId = departmentSelect.value;
+                    console.log('onShow: 初始科室值', initialDepartmentId);
+                    
+                    if (initialDepartmentId) {
+                        console.log('onShow: 初始科室已选择，调用updateDoctorList', initialDepartmentId);
+                        if (window.updateDoctorList) {
+                            window.updateDoctorList(initialDepartmentId, doctorSelect);
+                        } else {
+                            console.error('onShow: updateDoctorList函数未定义');
+                        }
+                    }
+                    
+                    // 监听科室选择变化
+                    departmentSelect.addEventListener('change', async function(e) {
+                        const departmentId = this.value;
+                        const currentDoctorId = doctorSelect.value;
+                        
+                        console.log('onShow: 科室选择变化事件触发', { 
+                            departmentId, 
+                            currentDoctorId,
+                            eventType: e.type,
+                            targetId: e.target.id,
+                            hasUpdateDoctorList: typeof window.updateDoctorList === 'function'
+                        });
+                        
+                        // 清空医生列表
+                        doctorSelect.innerHTML = '<option value="">请选择医生</option>';
+                        
+                        if (departmentId) {
+                            console.log('onShow: 调用updateDoctorList', departmentId);
+                            if (window.updateDoctorList) {
+                                await window.updateDoctorList(departmentId, doctorSelect, currentDoctorId);
+                            } else {
+                                console.error('onShow: updateDoctorList函数未定义');
+                            }
+                        } else {
+                            // 如果清空科室选择，恢复初始状态
+                            doctorSelect.innerHTML = '<option value="">请先选择科室</option>';
+                        }
+                    });
+                    
+                    console.log('onShow: 事件监听器已绑定');
+                } else {
+                    console.warn('onShow: 未找到科室或医生选择框', {
+                        hasDepartmentSelect: !!departmentSelect,
+                        hasDoctorSelect: !!doctorSelect
+                    });
+                }
+            }, 100);
+            
+            // 监听医生选择变化，自动填充默认挂号费
+            setTimeout(() => {
+                const doctorSelect = document.getElementById('schedule-doctor');
+                const priceInput = document.getElementById('schedule-price');
+                const feeHint = document.getElementById('doctor-default-fee-hint');
+                
+                if (doctorSelect && priceInput && feeHint) {
+                    doctorSelect.addEventListener('change', async (e) => {
+                        const doctorId = e.target.value;
+                        if (doctorId && !priceInput.value) {
+                            try {
+                                const doctorResponse = await DoctorAPI.getDetail(doctorId);
+                                const doctor = doctorResponse.data || doctorResponse;
+                                const defaultFee = doctor.registration_fee || 0;
+                                if (defaultFee > 0) {
+                                    feeHint.textContent = `该医生的默认挂号费：¥${parseFloat(defaultFee).toFixed(2)}`;
+                                    feeHint.style.display = 'block';
+                                } else {
+                                    feeHint.textContent = '该医生未设置默认挂号费';
+                                    feeHint.style.display = 'block';
+                                }
+                            } catch (error) {
+                                console.error('获取医生信息失败:', error);
+                            }
+                        } else if (!doctorId) {
+                            feeHint.style.display = 'none';
+                        }
+                    });
+                }
+            }, 100);
+        },
+        onSubmit: async (data) => {
+            try {
+                // 如果未设置挂号费，尝试获取医生的默认挂号费
+                let price = parseFloat(data.price) || 0.0;
+                if (price <= 0 && data.doctor_id) {
+                    try {
+                        const doctorResponse = await DoctorAPI.getDetail(data.doctor_id);
+                        const doctor = doctorResponse.data || doctorResponse;
+                        price = parseFloat(doctor.registration_fee || 0);
+                    } catch (error) {
+                        console.warn('获取医生默认挂号费失败:', error);
+                    }
+                }
+                
+                // 转换前端表单数据为后端API期望的格式
+                const scheduleData = {
+                    doctor_id: data.doctor_id,
+                    department_id: data.department_id || null,
+                    schedule_date: data.date, // 前端使用date，后端期望schedule_date
+                    time_slot: data.time_slot, // 需要转换为morning/afternoon/evening
+                    start_time: '',
+                    end_time: '',
+                    total_quota: parseInt(data.total_slots) || 0, // 前端使用total_slots，后端期望total_quota
+                    price: price
+                };
+                
+                // 根据time_slot设置start_time和end_time
+                // 如果time_slot是时间段格式（如"09:00-12:00"），需要解析
+                if (data.time_slot && data.time_slot.includes('-')) {
+                    const [start, end] = data.time_slot.split('-');
+                    scheduleData.start_time = start.trim() + ':00';
+                    scheduleData.end_time = end.trim() + ':00';
+                    
+                    // 根据时间段判断time_slot类型
+                    const startHour = parseInt(start.split(':')[0]);
+                    if (startHour < 12) {
+                        scheduleData.time_slot = 'morning';
+                    } else if (startHour < 18) {
+                        scheduleData.time_slot = 'afternoon';
+                    } else {
+                        scheduleData.time_slot = 'evening';
+                    }
+                } else {
+                    // 如果time_slot已经是morning/afternoon/full_day格式，设置默认时间
+                    if (data.time_slot === 'morning') {
+                        scheduleData.start_time = '09:00:00';
+                        scheduleData.end_time = '12:00:00';
+                    } else if (data.time_slot === 'afternoon') {
+                        scheduleData.start_time = '14:00:00';
+                        scheduleData.end_time = '17:00:00';
+                    } else if (data.time_slot === 'full_day') {
+                        scheduleData.start_time = '09:00:00';
+                        scheduleData.end_time = '17:00:00';
+                        scheduleData.time_slot = 'full_day';
+                    } else {
+                        // 默认值
+                        scheduleData.start_time = '09:00:00';
+                        scheduleData.end_time = '12:00:00';
+                        scheduleData.time_slot = 'morning';
+                    }
+                }
+                
+                await RegistrationAPI.createSchedule(scheduleData);
+                utils.showToast('新增排班成功', 'success');
+                if (window.loadSchedules) {
+                    window.loadSchedules();
+                }
+                return true;
+            } catch (error) {
+                console.error('新增排班失败:', error);
+                const errorMsg = error.message || '新增排班失败';
+                utils.showToast(errorMsg, 'danger');
+                return false;
+            }
+        }
+    });
+}
+
+// 编辑排班（挂载到全局作用域）
+window.editSchedule = async function(id) {
+    try {
+        const response = await RegistrationAPI.getScheduleDetail(id);
+        const schedule = response.data || response;
+        
+        if (!schedule) {
+            utils.showToast('获取排班详情失败', 'danger');
+            return;
+        }
+        
+        // 加载科室和医生列表
+        let departmentOptions = [{ value: '', text: '请选择科室' }];
+        let doctorOptions = [{ value: '', text: '请选择医生' }];
+        
+        try {
+            const deptResponse = await DepartmentAPI.getList({ page: 1, page_size: 100 });
+            if (deptResponse.items && deptResponse.items.length > 0) {
+                departmentOptions = [
+                    { value: '', text: '请选择科室' },
+                    ...deptResponse.items.map(dept => ({
+                        value: dept.id,
+                        text: dept.name || dept.department_name || '未命名科室'
+                    }))
+                ];
+            }
+            
+            const doctorResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+            if (doctorResponse.items && doctorResponse.items.length > 0) {
+                doctorOptions = [
+                    { value: '', text: '请选择医生' },
+                    ...doctorResponse.items.map(doctor => ({
+                        value: doctor.id,
+                        text: doctor.name || doctor.doctor_name || '未命名医生'
+                    }))
+                ];
+            }
+        } catch (error) {
+            console.error('加载科室或医生列表失败:', error);
+        }
+        
+        const formHtml = `
+            ${FormComponents.createSelect({
+                id: 'edit-schedule-department',
+                label: '科室',
+                name: 'department_id',
+                value: schedule.department_id || '',
+                options: departmentOptions
+            })}
+            ${FormComponents.createSelect({
+                id: 'edit-schedule-doctor',
+                label: '医生',
+                name: 'doctor_id',
+                value: schedule.doctor_id || '',
+                required: true,
+                options: doctorOptions
+            })}
+            ${FormComponents.createDatePicker({
+                id: 'edit-schedule-date',
+                label: '日期',
+                name: 'schedule_date',
+                value: schedule.schedule_date ? schedule.schedule_date.split('T')[0] : '',
+                required: true
+            })}
+            ${FormComponents.createSelect({
+                id: 'edit-schedule-time-slot',
+                label: '时间段',
+                name: 'time_slot',
+                value: schedule.time_slot || 'morning',
+                required: true,
+                options: [
+                    { value: 'morning', text: '上午 (09:00-12:00)' },
+                    { value: 'afternoon', text: '下午 (14:00-17:00)' },
+                    { value: 'evening', text: '晚上 (18:00-21:00)' }
+                ]
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-schedule-total-quota',
+                label: '总号源数',
+                name: 'total_quota',
+                type: 'number',
+                value: schedule.total_quota || 0,
+                required: true,
+                placeholder: '请输入总号源数'
+            })}
+            ${FormComponents.createInput({
+                id: 'edit-schedule-price',
+                label: '挂号费',
+                name: 'price',
+                type: 'number',
+                value: schedule.price || 0,
+                step: '0.01',
+                placeholder: '请输入挂号费'
+            })}
+            ${FormComponents.createSelect({
+                id: 'edit-schedule-status',
+                label: '状态',
+                name: 'status',
+                value: schedule.status || 'active',
+                options: [
+                    { value: 'active', text: '正常' },
+                    { value: 'paused', text: '暂停' },
+                    { value: 'cancelled', text: '取消' }
+                ]
+            })}
+        `;
+        
+        await ModalComponents.showFormModal({
+            title: '<i class="bi bi-pencil"></i> 编辑排班',
+            formHtml: formHtml,
+            size: 'lg',
+            onSubmit: async (formData) => {
+                try {
+                    // 转换前端表单数据为后端API期望的格式
+                    const scheduleData = {
+                        doctor_id: formData.doctor_id,
+                        department_id: formData.department_id || null,
+                        schedule_date: formData.schedule_date,
+                        time_slot: formData.time_slot,
+                        total_quota: parseInt(formData.total_quota) || 0,
+                        price: parseFloat(formData.price) || 0.0,
+                        status: formData.status || 'active'
+                    };
+                    
+                    // 根据time_slot设置start_time和end_time
+                    if (formData.time_slot === 'morning') {
+                        scheduleData.start_time = '09:00:00';
+                        scheduleData.end_time = '12:00:00';
+                    } else if (formData.time_slot === 'afternoon') {
+                        scheduleData.start_time = '14:00:00';
+                        scheduleData.end_time = '17:00:00';
+                    } else if (formData.time_slot === 'evening') {
+                        scheduleData.start_time = '18:00:00';
+                        scheduleData.end_time = '21:00:00';
+                    }
+                    
+                    await RegistrationAPI.updateSchedule(id, scheduleData);
+                    utils.showToast('更新排班成功', 'success');
+                    if (window.loadSchedules) {
+                        window.loadSchedules();
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('更新排班失败:', error);
+                    const errorMsg = error.message || error.data?.message || '更新排班失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('获取排班详情失败:', error);
+        const errorMsg = error.message || error.data?.message || '获取排班详情失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+}
+
+// 删除排班（挂载到全局作用域）
+window.deleteSchedule = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '<i class="bi bi-exclamation-triangle text-warning"></i> 确认删除',
+        message: '确定要删除该排班吗？<br><small class="text-muted">删除后该排班将无法使用，此操作不可恢复。</small>',
+        confirmText: '<i class="bi bi-trash"></i> 删除',
+        confirmType: 'danger',
+        cancelText: '取消'
+    });
+    
+    if (confirmed) {
+        try {
+            await RegistrationAPI.deleteSchedule(id);
+            utils.showToast('删除排班成功', 'success');
+            if (window.loadSchedules) {
+                window.loadSchedules();
+            }
+        } catch (error) {
+            console.error('删除排班失败:', error);
+            const errorMsg = error.message || error.data?.message || '删除排班失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+
+// 暂停挂号（挂载到全局作用域）
+window.pauseSchedule = async function(id) {
+    const confirmed = await ModalComponents.confirm({
+        title: '<i class="bi bi-pause-circle text-warning"></i> 确认暂停',
+        message: '确定要暂停该排班的挂号功能吗？<br><small class="text-muted">暂停后，该排班将不再接受新的挂号预约，已预约的不受影响。</small>',
+        confirmText: '<i class="bi bi-pause-circle"></i> 暂停',
+        confirmType: 'warning',
+        cancelText: '取消'
+    });
+    
+    if (confirmed) {
+        try {
+            await RegistrationAPI.pauseSchedule(id);
+            utils.showToast('暂停挂号成功', 'success');
+            if (window.loadSchedules) {
+                window.loadSchedules();
+            }
+        } catch (error) {
+            console.error('暂停挂号失败:', error);
+            const errorMsg = error.message || error.data?.message || '暂停挂号失败';
+            utils.showToast(errorMsg, 'danger');
+        }
+    }
+}
+
+// 恢复挂号（挂载到全局作用域）
+window.resumeSchedule = async function(id) {
+    try {
+        await RegistrationAPI.resumeSchedule(id);
+        utils.showToast('恢复挂号成功', 'success');
+        if (window.loadSchedules) {
+            window.loadSchedules();
+        }
+    } catch (error) {
+        console.error('恢复挂号失败:', error);
+        const errorMsg = error.message || error.data?.message || '恢复挂号失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+}
+
+// 换班（挂载到全局作用域）
+window.swapSchedule = async function(id) {
+    try {
+        // 获取当前排班信息
+        const scheduleResponse = await RegistrationAPI.getScheduleDetail(id);
+        const schedule = scheduleResponse.data || scheduleResponse;
+        
+        if (!schedule) {
+            utils.showToast('获取排班详情失败', 'danger');
+            return;
+        }
+        
+        // 加载医生列表
+        let doctorOptions = [{ value: '', text: '请选择新医生' }];
+        
+        try {
+            const doctorResponse = await DoctorAPI.getList({ page: 1, page_size: 100 });
+            if (doctorResponse.items && doctorResponse.items.length > 0) {
+                doctorOptions = [
+                    { value: '', text: '请选择新医生' },
+                    ...doctorResponse.items
+                        .filter(doctor => doctor.id !== schedule.doctor_id) // 排除当前医生
+                        .map(doctor => ({
+                            value: doctor.id,
+                            text: doctor.name || doctor.doctor_name || '未命名医生'
+                        }))
+                ];
+            }
+        } catch (error) {
+            console.error('加载医生列表失败:', error);
+            utils.showToast('加载医生列表失败，请稍后重试', 'warning');
+            return;
+        }
+        
+        const formHtml = `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> 当前医生：<strong>${schedule.doctor_name || '未知医生'}</strong>
+            </div>
+            ${FormComponents.createSelect({
+                id: 'swap-schedule-doctor',
+                label: '新医生',
+                name: 'new_doctor_id',
+                required: true,
+                options: doctorOptions
+            })}
+        `;
+        
+        await ModalComponents.showFormModal({
+            title: '<i class="bi bi-arrow-left-right"></i> 换班',
+            formHtml: formHtml,
+            size: 'md',
+            onSubmit: async (formData) => {
+                try {
+                    if (!formData.new_doctor_id) {
+                        utils.showToast('请选择新医生', 'warning');
+                        return false;
+                    }
+                    
+                    await RegistrationAPI.swapSchedule(id, formData.new_doctor_id);
+                    utils.showToast('换班成功', 'success');
+                    if (window.loadSchedules) {
+                        window.loadSchedules();
+                    }
+                    return true;
+                } catch (error) {
+                    console.error('换班失败:', error);
+                    const errorMsg = error.message || error.data?.message || '换班失败';
+                    utils.showToast(errorMsg, 'danger');
+                    return false;
+                }
+            }
+        });
+    } catch (error) {
+        console.error('获取排班详情失败:', error);
+        const errorMsg = error.message || error.data?.message || '获取排班详情失败';
+        utils.showToast(errorMsg, 'danger');
+    }
+}
+
+// 重置筛选条件（挂载到全局作用域）
+window.resetFilters = function() {
+    document.getElementById('department-filter').value = '';
+    document.getElementById('doctor-filter').value = '';
+    // 清空日期筛选器，这样会显示未来一周的数据
+    document.getElementById('date-filter').value = '';
+    if (window.loadSchedules) {
+        window.loadSchedules();
+    }
+}
+</script>
+
