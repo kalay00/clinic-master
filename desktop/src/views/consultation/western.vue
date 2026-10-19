@@ -244,8 +244,12 @@
           <div class="drug-toolbar">
             <el-select v-model="drugCategory" placeholder="药品分类" style="width: 120px">
               <el-option label="全部分类" value="all" />
-              <el-option label="西药" value="western" />
-              <el-option label="中药" value="chinese" />
+              <el-option
+                v-for="c in drugCategories"
+                :key="c.id"
+                :label="c.name"
+                :value="c.id"
+              />
             </el-select>
             <el-input
               v-model="drugKeyword"
@@ -354,8 +358,9 @@ import WesternBatch from '@/views/consultation/western-batch.vue'
 import WesternExtra from '@/views/consultation/western-extra.vue'
 import ChargeConfirm from '@/views/consultation/charge-confirm.vue'
 import { getRegistration } from '@/api/registration'
-import { getDrugs } from '@/api/pharmacy'
+import { getDrugs, getDrugCategories } from '@/api/pharmacy'
 import { getDictionaryList } from '@/api/dictionary'
+import { fetchAllPages } from '@/utils/paging'
 import { createMedicalRecord, createPrescription } from '@/api/treatment'
 import { useUserStore } from '@/store/modules/user'
 import { useDrugCategoryConfig } from '@/composables/useDrugCategoryConfig'
@@ -388,6 +393,7 @@ onMounted(async () => {
       patient.name = reg.patient_name || patient.name
     } catch (e) { /* 忽略：未带挂号参数时保持空白 */ }
   }
+  await loadDrugCategories()
   reloadDrugs()
 })
 
@@ -605,6 +611,14 @@ const removeDrug = (idx) => {
 // 药品 / 检查项目选择（全部接入真实接口）
 const drugCategory = ref('')
 const drugKeyword = ref('')
+const drugCategories = ref([])   // 药品分类（字典维护-药品分类，DrugCategory 表）
+
+async function loadDrugCategories() {
+  try {
+    const list = await fetchAllPages(p => getDrugCategories(p))
+    drugCategories.value = list.filter(c => c.status !== 'inactive')
+  } catch (e) { /* 分类加载失败时保持空下拉，不影响选药 */ }
+}
 const drugList = ref([])          // 当前分类已加载的药品（分页追加）
 const inspectionList = ref([])    // 检查项目（字典接口分页追加）
 const drugTableRef = ref(null)
@@ -621,7 +635,7 @@ const drugFinished = computed(() => drugList.value.length >= drugTotal.value && 
 const currentDrugCategory = computed(() => {
   if (activeTabType.value === 'inspection') return ''
   if (drugCategory.value && drugCategory.value !== 'all') return drugCategory.value
-  return activeTabType.value // western / chinese
+  return '' // 全部分类：不加过滤；此前回退 activeTabType('western'/'chinese') 会命中旧分类名匹配而查不到数据
 })
 
 const filteredDrugs = computed(() => {
