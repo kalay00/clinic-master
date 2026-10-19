@@ -74,3 +74,6 @@ uploads/
 tests/
 docs/
 docker/postgres/
+# Docker bind mount 数据目录
+docker/redis/data/
+docker/rabbitmq/data/

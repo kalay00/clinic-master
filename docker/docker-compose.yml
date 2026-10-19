@@ -12,7 +12,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-his_user} -d ${POSTGRES_DB:-his_db}"]
@@ -34,7 +34,7 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"      # AMQP端口
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"  # 管理界面端口
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -53,7 +53,7 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis_data:/data
+      - ./redis/data:/data
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:?错误: 请设置 REDIS_PASSWORD 环境变量}
@@ -106,9 +106,10 @@ services:
       - ../backend:/backend
       # 前端静态页面：挂到容器内 /frontend，由 main.py 的 StaticFiles 托管（/ 根路径）
       - ../frontend:/frontend
-      # 上传目录使用命名卷：容器以非 root 用户运行，写宿主机 bind mount 常报权限错；
-      # 命名卷持久化且初始属主为 hisuser，可正常读写
-      - uploads_data:/backend/uploads
+      # 上传目录：bind mount 到 docker/backend/uploads，数据集中管理、备份方便。
+      # 容器以非 root 用户运行，若首次启动报权限错，在宿主机执行：
+      #   mkdir -p docker/backend/uploads && sudo chown -R 1000:1000 docker/backend/uploads
+      - ./backend/uploads:/backend/uploads
     depends_on:
       his-postgres:
         condition: service_healthy
@@ -171,24 +172,13 @@ services:
     build:
       context: ../
       dockerfile: ./docker/desktop/Dockerfile
-      args:
-        VITE_API_BASE_URL: /api/v1
-        VITE_USE_MOCK: "false"
-    restart: unless-stopped
     ports:
-      - "8080:80"
+      - "${DESKTOP_PORT:-5174}:80"
+    expose:
+      - "80"
+    restart: unless-stopped
+    
     depends_on:
       his-backend:
         condition: service_healthy
 
-
-
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  rabbitmq_data:
-    driver: local
-  uploads_data:
-    driver: local
