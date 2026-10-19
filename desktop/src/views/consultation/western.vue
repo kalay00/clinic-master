@@ -271,7 +271,6 @@
             @row-click="toggleDrug"
             @scroll="onDrugScroll"
           >
-            <el-table-column type="selection" width="40" />
             <el-table-column prop="name" label="名称" min-width="110" />
             <el-table-column prop="spec" label="规格" width="70" />
             <el-table-column prop="stock" label="库存" width="60" />
@@ -551,16 +550,19 @@ const addPrescription = (type) => {
     const idx = prescriptionTabs.value.filter(t => t.type === 'western').length + 1
     const key = `western-${idx}`
     prescriptionTabs.value.push({ key, name: `西药处方${idx}`, type: 'western' })
+    if (!prescriptionData[key]) prescriptionData[key] = []
     activePrescription.value = key
   } else if (type === 'chinese') {
     const idx = prescriptionTabs.value.filter(t => t.type === 'chinese').length + 1
     const key = `chinese-${idx}`
     prescriptionTabs.value.push({ key, name: `中药处方${idx}`, type: 'chinese' })
+    if (!prescriptionData[key]) prescriptionData[key] = []
     activePrescription.value = key
   } else if (type === 'inspection') {
     const idx = prescriptionTabs.value.filter(t => t.type === 'inspection').length + 1
     const key = `inspection-${idx}`
     prescriptionTabs.value.push({ key, name: `检查项目${idx}`, type: 'inspection' })
+    if (!prescriptionData[key]) prescriptionData[key] = []
     activePrescription.value = key
   }
 }
@@ -593,6 +595,12 @@ const prescriptionList = computed({
   get: () => prescriptionData[activePrescription.value] || [],
   set: (val) => { prescriptionData[activePrescription.value] = val },
 })
+
+// 确保每个处方 tab 都有明细容器：新建 tab / 切换 tab 时按需创建，
+// 否则 getter 返回临时空数组，右侧选药 push 进去会丢失（页面无反应）
+watch(activePrescription, (key) => {
+  if (key && !prescriptionData[key]) prescriptionData[key] = []
+}, { immediate: true })
 
 const prescriptionTotal = computed(() =>
   prescriptionList.value.reduce((sum, item) => sum + (Number(item.price) * (Number(item.qty) || 1) || 0), 0)
