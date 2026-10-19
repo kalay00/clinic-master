@@ -231,7 +231,7 @@ main() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         log_info "初始化测试数据..."
-        python3 -m app.core.init_test_data || log_warning "测试数据初始化失败"
+        python3 scripts/init_test_data.py || log_warning "测试数据初始化失败"
         log_success "测试数据已初始化"
         log_info "默认测试账号:"
         log_info "  平台管理员: platform_admin / 111111"

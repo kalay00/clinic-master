@@ -24,8 +24,16 @@ def init_data() -> None:
     初始化基础数据
     创建系统默认数据
     """
-    from app.core.init_test_data import init_test_data
-    
+    # 测试数据生成逻辑已移至 backend/scripts/init_test_data.py（scripts 不是包，需加入 sys.path）
+    import sys
+    from pathlib import Path
+
+    scripts_dir = str(Path(__file__).resolve().parent.parent / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+
+    from init_test_data import init_test_data
+
     print("初始化基础数据...")
     init_test_data()
     print("基础数据初始化完成！")

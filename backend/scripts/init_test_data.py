@@ -1,7 +1,16 @@
 """
 测试数据初始化脚本
 初始化所有测试数据，所有用户密码设置为111111
+
+用法（在 backend 目录下）：
+    python scripts/init_test_data.py
 """
+import sys
+import os
+
+# 添加 backend 项目根目录到路径（脚本位于 backend/scripts/ 下）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from datetime import date, datetime, time, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text

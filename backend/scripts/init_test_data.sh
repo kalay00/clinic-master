@@ -32,10 +32,7 @@ echo ""
 echo "开始初始化测试数据..."
 echo ""
 
-python3 -c "
-from app.core.init_test_data import init_test_data
-init_test_data()
-"
+python3 scripts/init_test_data.py
 
 echo ""
 echo "=========================================="
