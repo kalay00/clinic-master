@@ -340,6 +340,37 @@
     <WesternBatch v-model="showBatch" @confirm="onBatchConfirm" />
     <WesternExtra v-model="showExtra" @confirm="onExtraConfirm" />
     <ChargeConfirm v-model="showChargeConfirm" @confirm="onChargeConfirm" />
+
+    <!-- 患者查询弹窗：直接就诊（无挂号单）时查询并回填患者信息 -->
+    <el-dialog v-model="showPatientSearch" title="查询患者" width="760px" append-to-body>
+      <div class="patient-search-bar">
+        <el-input
+          v-model="patientKeyword"
+          placeholder="姓名 / 手机号 / 证件号 / 档案号"
+          clearable
+          style="width: 280px"
+          @keyup.enter="onPatientSearch"
+        />
+        <el-button type="primary" :icon="Search" @click="onPatientSearch">查询</el-button>
+        <span class="patient-search-tip">点击表格行即选中并回填患者信息</span>
+      </div>
+      <el-table
+        :data="patientResults"
+        border
+        height="380"
+        v-loading="patientSearching"
+        @row-click="onPickPatient"
+      >
+        <el-table-column prop="patient_no" label="档案号" width="130" />
+        <el-table-column prop="name" label="姓名" width="100" />
+        <el-table-column label="性别" width="70">
+          <template #default="{ row }">{{ row.gender === 'male' ? '男' : row.gender === 'female' ? '女' : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="age" label="年龄" width="70" />
+        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column prop="id_card" label="证件号" min-width="170" />
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
@@ -357,6 +388,7 @@ import WesternBatch from '@/views/consultation/western-batch.vue'
 import WesternExtra from '@/views/consultation/western-extra.vue'
 import ChargeConfirm from '@/views/consultation/charge-confirm.vue'
 import { getRegistration } from '@/api/registration'
+import { getPatient, getPatients, getPatientVisits } from '@/api/patient'
 import { getDrugs, getDrugCategories } from '@/api/pharmacy'
 import { getDictionaryList } from '@/api/dictionary'
 import { fetchAllPages } from '@/utils/paging'
@@ -380,17 +412,73 @@ const regId = computed(() => route.query.regId || '')
 const patientId = ref('')
 const registrationId = ref('')
 
+// 根据出生日期计算年龄
+const calcAge = (birthday) => {
+  if (!birthday) return ''
+  const b = new Date(birthday)
+  if (Number.isNaN(b.getTime())) return ''
+  const now = new Date()
+  let age = now.getFullYear() - b.getFullYear()
+  const m = now.getMonth() - b.getMonth()
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age -= 1
+  return age >= 0 && age < 150 ? String(age) : ''
+}
+
+// 性别归一化：兼容 male/female、M/F、男/女 等历史写法，统一为表单选项值
+const normalizeGender = (g) => {
+  if (!g) return ''
+  if (g === 'male' || g === '男' || g === 'M') return 'male'
+  if (g === 'female' || g === '女' || g === 'F') return 'female'
+  return g
+}
+
+// 患者信息回填（挂号带入 / 弹窗查询共用）；仅覆盖有值的字段，避免空值冲掉已有数据
+const applyPatientToForm = (p) => {
+  if (!p) return
+  patient.name = p.name || patient.name
+  patient.cardNo = p.patient_no || patient.cardNo
+  patient.phone = p.phone || patient.phone
+  patient.gender = normalizeGender(p.gender) || patient.gender
+  const birthday = p.birth_date || (p.birthday ? String(p.birthday).slice(0, 10) : '')
+  patient.birthday = birthday || patient.birthday
+  patient.idCard = p.id_card || patient.idCard
+  patient.address = p.address || patient.address
+  if (p.age != null && p.age !== '') patient.age = String(p.age)
+  else if (!patient.age && patient.birthday) patient.age = calcAge(patient.birthday)
+}
+
+// 按患者ID补全患者信息（详情接口失败时保留调用方传入的兜底数据）
+const fillPatientById = async (id, fallback = {}) => {
+  if (!id) return
+  try {
+    const detail = await getPatient(id)
+    applyPatientToForm({ ...fallback, ...(detail || {}) })
+  } catch (e) { /* 详情失败：保留兜底 */ applyPatientToForm(fallback) }
+  // 有历史就诊记录则默认复诊，否则初诊
+  try {
+    const visits = await getPatientVisits(id)
+    const list = Array.isArray(visits) ? visits : (visits?.items || [])
+    patient.visitType = list.length > 0 ? 'return' : 'first'
+  } catch (e) { /* 就诊历史不可得时不改接诊类型 */ }
+}
+
 onMounted(async () => {
   // 先读取药品分类开关，确保处方 tab 在渲染药品前已按开关过滤
   await loadDrugCategoryConfig()
   applyDrugCategoryTabs()
   if (regId.value) {
+    // 场景一：从挂号记录点「就诊」进入，按挂号单自动填充患者信息
     try {
       const reg = await getRegistration(regId.value)
       registrationId.value = reg.id || regId.value
       patientId.value = reg.patient_id || ''
-      patient.name = reg.patient_name || patient.name
-    } catch (e) { /* 忽略：未带挂号参数时保持空白 */ }
+      // 挂号返回的富化字段先兜底，再拉患者详情补全年龄/性别/证件/地址等
+      await fillPatientById(patientId.value, {
+        name: reg.patient_name,
+        patient_no: reg.patient_no,
+        phone: reg.patient_phone,
+      })
+    } catch (e) { /* 忽略：未带挂号参数时保持空白，走直接就诊流程 */ }
   }
   await loadDrugCategories()
   reloadDrugs()
@@ -703,7 +791,36 @@ const goTemplateCreate = () => { showRxTemplateCreate.value = true }
 const goCharge = () => router.push('/consultation/charge')
 const goEnd = () => { showChargeConfirm.value = true }
 
-const onSearchPatient = () => ElMessage.info('按条件查询患者')
+// 直接就诊：查询患者并回填
+const showPatientSearch = ref(false)
+const patientKeyword = ref('')
+const patientResults = ref([])
+const patientSearching = ref(false)
+
+const onPatientSearch = async () => {
+  patientSearching.value = true
+  try {
+    const res = await getPatients({ keyword: patientKeyword.value.trim() || undefined, page: 1, page_size: 20 })
+    patientResults.value = res.items || []
+  } catch (e) {
+    ElMessage.error('患者查询失败')
+  } finally {
+    patientSearching.value = false
+  }
+}
+
+const onPickPatient = async (row) => {
+  patientId.value = row.id
+  // 与挂号带入一致：拉详情补全 + 按就诊历史推断初/复诊
+  await fillPatientById(row.id, row)
+  showPatientSearch.value = false
+  ElMessage.success(`已选择患者：${row.name || ''}`)
+}
+
+const onSearchPatient = () => {
+  showPatientSearch.value = true
+  if (!patientResults.value.length) onPatientSearch()
+}
 const onPickDiagnosis = () => ElMessage.info('打开诊断选择')
 const onPickAdvice = () => ElMessage.info('打开医嘱选择')
 
@@ -966,5 +1083,18 @@ watch(drugKeyword, () => {
   background: #fff;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
   z-index: 100;
+}
+
+/* 患者查询弹窗 */
+.patient-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+
+  .patient-search-tip {
+    color: #909399;
+    font-size: 12px;
+  }
 }
 </style>

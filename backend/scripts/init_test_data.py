@@ -500,7 +500,7 @@ def init_test_data():
                     {
                         "name": "王小明",
                         "id_card": "110101199001011234",
-                        "gender": "M",
+                        "gender": "male",
                         "birthday": date(1990, 1, 1),
                         "phone": "13810001001",
                         "address": "北京市朝阳区测试街1号",
@@ -508,7 +508,7 @@ def init_test_data():
                     {
                         "name": "李小红",
                         "id_card": "110101199002021235",
-                        "gender": "F",
+                        "gender": "female",
                         "birthday": date(1990, 2, 2),
                         "phone": "13810001002",
                         "address": "北京市海淀区测试街2号",
@@ -516,7 +516,7 @@ def init_test_data():
                     {
                         "name": "张大明",
                         "id_card": "110101198503031236",
-                        "gender": "M",
+                        "gender": "male",
                         "birthday": date(1985, 3, 3),
                         "phone": "13810001003",
                         "address": "北京市西城区测试街3号",
@@ -524,7 +524,7 @@ def init_test_data():
                     {
                         "name": "赵小芳",
                         "id_card": "110101199504041237",
-                        "gender": "F",
+                        "gender": "female",
                         "birthday": date(1995, 4, 4),
                         "phone": "13810001004",
                         "address": "北京市东城区测试街4号",
@@ -532,7 +532,7 @@ def init_test_data():
                     {
                         "name": "刘小华",
                         "id_card": "110101199505051238",
-                        "gender": "M",
+                        "gender": "male",
                         "birthday": date(1995, 5, 5),
                         "phone": "13810001005",
                         "address": "北京市丰台区测试街5号",
