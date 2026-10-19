@@ -960,7 +960,63 @@ def init_test_data():
                     logger.info("✓ 字典种子数据创建完成")
         except Exception as e:
             logger.warning(f"跳过字典种子数据创建: {str(e)}")
-        
+
+        # 5.6 创建费用设置数据（系统设置-费用设置：挂号费/治疗费/附加费/其它，按租户隔离，幂等）
+        try:
+            from app.api.v1.module_fee.model import Fee
+            from sqlalchemy import inspect as _inspect_fee
+            if 'fees' in _inspect_fee(engine).get_table_names():
+                logger.info("创建费用设置数据...")
+                fees_data = [
+                    # 挂号费
+                    {"fee_type": "registration", "name": "普通挂号", "code": "GH001", "amount": 10.00, "cost_price": 0, "unit": "次", "remark": "普通门诊挂号"},
+                    {"fee_type": "registration", "name": "专家挂号", "code": "GH002", "amount": 20.00, "cost_price": 0, "unit": "次", "remark": "专家/主任医师门诊挂号"},
+                    {"fee_type": "registration", "name": "急诊挂号", "code": "GH003", "amount": 30.00, "cost_price": 0, "unit": "次", "remark": "急诊挂号"},
+                    # 治疗费
+                    {"fee_type": "treatment", "name": "针灸治疗", "code": "ZL001", "amount": 50.00, "cost_price": 10.00, "unit": "次", "remark": "针灸治疗费"},
+                    {"fee_type": "treatment", "name": "推拿治疗", "code": "ZL002", "amount": 60.00, "cost_price": 12.00, "unit": "次", "remark": "推拿治疗费"},
+                    {"fee_type": "treatment", "name": "拔罐治疗", "code": "ZL003", "amount": 30.00, "cost_price": 6.00, "unit": "次", "remark": "拔罐治疗费"},
+                    {"fee_type": "treatment", "name": "艾灸治疗", "code": "ZL004", "amount": 40.00, "cost_price": 8.00, "unit": "次", "remark": "艾灸治疗费"},
+                    # 附加费
+                    {"fee_type": "extra", "name": "材料费", "code": "FJ001", "amount": 5.00, "cost_price": 2.00, "unit": "项", "remark": "一次性材料费"},
+                    {"fee_type": "extra", "name": "治疗室使用费", "code": "FJ002", "amount": 10.00, "cost_price": 0, "unit": "次", "remark": "治疗室使用费"},
+                    {"fee_type": "extra", "name": "煎药费", "code": "FJ003", "amount": 8.00, "cost_price": 3.00, "unit": "付", "remark": "代煎中药服务费"},
+                    # 其它
+                    {"fee_type": "other", "name": "诊疗费", "code": "QT001", "amount": 15.00, "cost_price": 0, "unit": "次", "remark": "医生诊疗服务费"},
+                    {"fee_type": "other", "name": "检查费", "code": "QT002", "amount": 20.00, "cost_price": 0, "unit": "项", "remark": "常规检查费"},
+                    {"fee_type": "other", "name": "化验费", "code": "QT003", "amount": 25.00, "cost_price": 0, "unit": "项", "remark": "常规化验费"},
+                ]
+                for tenant in [tenant1, tenant2]:
+                    _users = users_by_tenant.get(tenant.id) or []
+                    admin_id = _users[0].id if _users else None
+                    sort_counter = 0
+                    for fee_data in fees_data:
+                        existing_fee = db.query(Fee).filter(
+                            Fee.tenant_id == tenant.id,
+                            Fee.fee_type == fee_data["fee_type"],
+                            Fee.name == fee_data["name"],
+                            Fee.deleted_at.is_(None),
+                        ).first()
+                        if existing_fee:
+                            continue
+                        sort_counter += 1
+                        db.add(Fee(
+                            tenant_id=tenant.id,
+                            fee_type=fee_data["fee_type"],
+                            name=fee_data["name"],
+                            code=fee_data["code"],
+                            amount=fee_data["amount"],
+                            cost_price=fee_data["cost_price"],
+                            unit=fee_data["unit"],
+                            sort=sort_counter,
+                            status=True,
+                            remark=fee_data["remark"],
+                            created_by=admin_id,
+                        ))
+                    logger.info(f"✓ 费用设置数据创建完成 (租户: {tenant.code})")
+        except Exception as e:
+            logger.warning(f"跳过费用设置数据创建: {str(e)}")
+
         # 设置租户默认配置
         logger.info("设置租户默认配置...")
         from app.services.tenant_service import TenantService
@@ -1002,6 +1058,15 @@ def init_test_data():
         print(f"每个租户的药品数量: {drugs_count}")
         drug_categories_count = len(drug_categories_by_tenant.get(tenant1.id, {})) if drug_categories_by_tenant else 0
         print(f"每个租户的药品分类数量: {drug_categories_count} (西药/中成药/中药，可在字典维护-药品分类中查看)")
+        try:
+            from app.api.v1.module_fee.model import Fee
+            fees_count = db.query(Fee).filter(
+                Fee.tenant_id == tenant1.id,
+                Fee.deleted_at.is_(None),
+            ).count()
+        except Exception:
+            fees_count = 0
+        print(f"每个租户的费用设置数量: {fees_count} (挂号费/治疗费/附加费/其它，可在系统设置-费用设置中查看)")
         print("="*60)
         
     except Exception as e:
