@@ -2,11 +2,12 @@
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
+greenlet==3.5.2                        # 协程核心依赖（SQLAlchemy 异步）
 
 # 数据库
 sqlalchemy>=2.0.0
 alembic>=1.12.0
-psycopg2-binary>=2.9.9
+psycopg[binary]>=3.2.0  # 同步引擎驱动（SQLAlchemy postgresql+psycopg 方言）
 asyncpg>=0.29.0  # 异步引擎驱动（database.py 使用 postgresql+asyncpg://）
 aiosqlite>=0.20.0  # 异步 SQLite 驱动（可选，本地/测试用）
 

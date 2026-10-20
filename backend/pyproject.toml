@@ -28,7 +28,8 @@ dependencies = [
     "uvicorn[standard]>=0.24.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.12.0",
-    "psycopg2-binary>=2.9.9",
+    "greenlet==3.5.2",
+    "psycopg[binary]>=3.2.0",  # 同步引擎驱动（SQLAlchemy postgresql+psycopg 方言）
     "redis>=5.0.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
