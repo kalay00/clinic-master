@@ -1,9 +1,9 @@
 <template>
   <div class="consultation-page">
-    <!-- 顶部：处方 / 病历 -->
+    <!-- 顶部：病历 / 处方（先填病历，保存后切换到处方） -->
     <el-tabs v-model="topTab" class="consult-top-tabs" @tab-change="onTopTabChange">
-      <el-tab-pane label="处方" name="western" />
       <el-tab-pane label="病历" name="record" />
+      <el-tab-pane label="处方" name="western" />
     </el-tabs>
 
     <!-- 患者信息 -->
@@ -313,8 +313,13 @@
             <el-option label="全科" value="general" />
           </el-select>
           <span class="footer-label">接诊医生：</span>
-          <el-select v-model="doctor" placeholder="接诊医生" size="small" style="width: 130px">
-            <el-option label="王阳明" value="1" />
+          <el-select v-model="doctorId" placeholder="请选择接诊医生" size="small" style="width: 150px">
+            <el-option
+              v-for="d in doctors"
+              :key="d.id"
+              :label="d.name + (d.title ? `（${d.title}）` : '')"
+              :value="d.id"
+            />
           </el-select>
         </div>
         <div class="footer-right">
@@ -389,11 +394,11 @@ import WesternExtra from '@/views/consultation/western-extra.vue'
 import ChargeConfirm from '@/views/consultation/charge-confirm.vue'
 import { getRegistration } from '@/api/registration'
 import { getPatient, getPatients, getPatientVisits } from '@/api/patient'
+import { getDoctors } from '@/api/doctor'
 import { getDrugs, getDrugCategories } from '@/api/pharmacy'
 import { getDictionaryList } from '@/api/dictionary'
 import { fetchAllPages } from '@/utils/paging'
-import { createMedicalRecord, createPrescription } from '@/api/treatment'
-import { useUserStore } from '@/store/modules/user'
+import { createPrescription } from '@/api/treatment'
 import { useDrugCategoryConfig } from '@/composables/useDrugCategoryConfig'
 
 const { westernEnabled, chineseEnabled, load: loadDrugCategoryConfig } = useDrugCategoryConfig()
@@ -411,6 +416,16 @@ const patient = reactive({
 const regId = computed(() => route.query.regId || '')
 const patientId = ref('')
 const registrationId = ref('')
+// 接诊医生（保存处方必填）
+const doctorId = ref('')
+const doctors = ref([])
+
+const loadDoctors = async () => {
+  try {
+    const res = await getDoctors({ page: 1, page_size: 100 })
+    doctors.value = res.items || []
+  } catch (e) { /* 医生列表加载失败不影响开方 */ }
+}
 
 // 根据出生日期计算年龄
 const calcAge = (birthday) => {
@@ -466,12 +481,15 @@ onMounted(async () => {
   // 先读取药品分类开关，确保处方 tab 在渲染药品前已按开关过滤
   await loadDrugCategoryConfig()
   applyDrugCategoryTabs()
+  await loadDoctors()
   if (regId.value) {
     // 场景一：从挂号记录点「就诊」进入，按挂号单自动填充患者信息
     try {
       const reg = await getRegistration(regId.value)
       registrationId.value = reg.id || regId.value
       patientId.value = reg.patient_id || ''
+      // 挂号单上的医生作为默认接诊医生
+      if (reg.doctor_id) doctorId.value = reg.doctor_id
       // 挂号返回的富化字段先兜底，再拉患者详情补全年龄/性别/证件/地址等
       await fillPatientById(patientId.value, {
         name: reg.patient_name,
@@ -479,6 +497,10 @@ onMounted(async () => {
         phone: reg.patient_phone,
       })
     } catch (e) { /* 忽略：未带挂号参数时保持空白，走直接就诊流程 */ }
+  } else if (route.query.patientId) {
+    // 从病历页保存后切换过来：按患者ID恢复患者信息
+    patientId.value = route.query.patientId
+    await fillPatientById(patientId.value)
   }
   await loadDrugCategories()
   reloadDrugs()
@@ -598,7 +620,21 @@ const showChargeConfirm = ref(false)
 // 顶部 Tab
 const topTab = ref('western')
 const onTopTabChange = (name) => {
-  if (name === 'record') router.push('/consultation/record')
+  // 返回病历时携带挂号/患者上下文，避免患者信息丢失
+  if (name === 'record') {
+    const q = {}
+    if (regId.value) q.regId = regId.value
+    if (patientId.value) q.patientId = patientId.value
+    router.push({ path: '/consultation/record', query: q })
+  }
+}
+
+// 跨页保留就诊上下文（供病历页互跳使用）
+const consultationQuery = () => {
+  const q = {}
+  if (regId.value) q.regId = regId.value
+  if (patientId.value) q.patientId = patientId.value
+  return q
 }
 
 const regionOptions = [
@@ -783,7 +819,6 @@ const toggleDrug = (item) => {
 
 // 底部按钮跳转
 const dept = ref('general')
-const doctor = ref('1')
 const goBatch = () => { showBatch.value = true }
 const goExtraFee = () => { showExtra.value = true }
 const goTemplateCall = () => { showRxTemplateCall.value = true }
@@ -833,26 +868,23 @@ const onSave = async () => {
     ElMessage.warning('请先选择就诊患者')
     return
   }
+  if (!doctorId.value) {
+    ElMessage.warning('请先选择接诊医生')
+    return
+  }
+  if (!prescriptionTabs.value.some(t => (prescriptionData[t.key] || []).length)) {
+    ElMessage.warning('请先从右侧选择药品')
+    return
+  }
   try {
-    await createMedicalRecord({
-      registration_id: registrationId.value,
-      patient_id: patientId.value,
-      chief_complaint: form.chiefComplaint,
-      present_illness: form.presentIllness,
-      past_history: form.pastHistory,
-      allergy_history: form.allergyHistory,
-      physical_exam: form.physicalExam,
-      diagnosis: form.diagnosis,
-      advice: form.advice,
-    })
-    // 按处方 tab 分别保存（西药/中药/检查项目）
+    // 病历已在病历页保存，此处仅按处方 tab 保存处方
     for (const tab of prescriptionTabs.value) {
       const list = prescriptionData[tab.key] || []
       if (!list.length) continue
       if (tab.type === 'inspection') {
         await createPrescription({
           patient_id: patientId.value,
-          doctor_id: useUserStore().userInfo?.id || '',
+          doctor_id: doctorId.value,
           prescription_type: 'inspection',
           items: list.map(it => ({
             name: it.name,
@@ -864,7 +896,7 @@ const onSave = async () => {
       } else {
         await createPrescription({
           patient_id: patientId.value,
-          doctor_id: useUserStore().userInfo?.id || '',
+          doctor_id: doctorId.value,
           prescription_type: tab.type,
           items: list.map(it => ({
             name: it.name,
@@ -882,7 +914,7 @@ const onSave = async () => {
         })
       }
     }
-    ElMessage.success('保存成功')
+    ElMessage.success('处方保存成功')
   } catch (e) {
     ElMessage.error('保存失败')
   }

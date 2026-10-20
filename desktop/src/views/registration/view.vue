@@ -63,7 +63,7 @@ async function load() {
   } catch (e) { ElMessage.error('加载挂号详情失败') }
   finally { loading.value = false }
 }
-const onVisit = () => router.push(`/consultation/western?regId=${id}`)
+const onVisit = () => router.push(`/consultation/record?regId=${id}`)
 const onRefund = async () => {
   try { await ElMessageBox.confirm('确定退号？', '提示', { type: 'warning' }) } catch { return }
   try { await updateRegistration(id, { status: 'cancelled' }); ElMessage.success('退号成功'); load() } catch (e) { ElMessage.error('退号失败') }

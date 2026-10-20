@@ -150,7 +150,7 @@ const onSizeChange = () => { query.page = 1; fetchList() }
 const onTabChange = () => { query.page = 1; fetchList() }
 const onExport = () => ElMessage.info('导出功能开发中')
 const onEdit = (row) => router.push(`/registration/edit/${row.id}`)
-const onVisit = (row) => router.push(`/consultation/western?regId=${row.id}`)
+const onVisit = (row) => router.push(`/consultation/record?regId=${row.id}`)
 
 const onRefund = async (row) => {
   try {

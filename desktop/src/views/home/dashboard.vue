@@ -173,7 +173,7 @@ watch(page, (v) => {
 
 function onReceive(item) {
   if (item.id) {
-    router.push(`/consultation/western?regId=${item.id}`)
+    router.push(`/consultation/record?regId=${item.id}`)
   }
 }
 

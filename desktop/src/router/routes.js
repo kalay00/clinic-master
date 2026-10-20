@@ -70,7 +70,7 @@ export const asyncRoutes = [
   {
     path: '/consultation',
     component: Layout,
-    redirect: '/consultation/western',
+    redirect: '/consultation/record',
     name: 'Consultation',
     meta: { title: '新开就诊', icon: 'FirstAidKit' },
     children: [
