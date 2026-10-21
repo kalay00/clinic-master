@@ -961,6 +961,42 @@ def init_test_data():
         except Exception as e:
             logger.warning(f"跳过字典种子数据创建: {str(e)}")
 
+        # 5.5.1 创建供应商数据（入库/退货必选供应商，按租户隔离，幂等）
+        try:
+            from app.api.v1.module_inventory.model import Supplier
+            from sqlalchemy import inspect as _inspect_sup
+            if 'suppliers' in _inspect_sup(engine).get_table_names():
+                logger.info("创建供应商数据...")
+                suppliers_data = [
+                    {"name": "华润医药", "code": "SUP001", "contact_name": "李明", "contact_phone": "13900001001", "address": "北京市朝阳区建国路1号"},
+                    {"name": "国药控股", "code": "SUP002", "contact_name": "王强", "contact_phone": "13900001002", "address": "上海市浦东新区张江路2号"},
+                    {"name": "同仁堂药业", "code": "SUP003", "contact_name": "赵芳", "contact_phone": "13900001003", "address": "北京市西城区王府井街3号"},
+                ]
+                for tenant in [tenant1, tenant2]:
+                    _users = users_by_tenant.get(tenant.id) or []
+                    admin_id = _users[0].id if _users else None
+                    for sup_data in suppliers_data:
+                        existing_sup = db.query(Supplier).filter(
+                            Supplier.tenant_id == tenant.id,
+                            Supplier.name == sup_data["name"],
+                            Supplier.deleted_at.is_(None),
+                        ).first()
+                        if existing_sup:
+                            continue
+                        db.add(Supplier(
+                            tenant_id=tenant.id,
+                            name=sup_data["name"],
+                            code=sup_data["code"],
+                            contact_name=sup_data["contact_name"],
+                            contact_phone=sup_data["contact_phone"],
+                            address=sup_data["address"],
+                            status="active",
+                            created_by=admin_id,
+                        ))
+                    logger.info(f"✓ 供应商数据创建完成 (租户: {tenant.code})")
+        except Exception as e:
+            logger.warning(f"跳过供应商数据创建: {str(e)}")
+
         # 5.6 创建费用设置数据（系统设置-费用设置：挂号费/治疗费/附加费/其它，按租户隔离，幂等）
         try:
             from app.api.v1.module_fee.model import Fee

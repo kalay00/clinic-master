@@ -257,6 +257,12 @@ export const asyncRoutes = [
         meta: { title: '出库管理', icon: 'Promotion' }
       },
       {
+        path: 'dispense',
+        name: 'DrugDispense',
+        component: () => import('@/views/drugs/dispense.vue'),
+        meta: { title: '药品发药', icon: 'Sell' }
+      },
+      {
         path: 'stock',
         name: 'DrugStock',
         component: () => import('@/views/drugs/stock.vue'),

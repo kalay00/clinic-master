@@ -126,7 +126,16 @@ const onSubmit = async () => {
   if (items.value.some(x => !x.drug_id)) { ElMessage.warning('请选择药品'); return }
   submitting.value = true
   try {
-    const payload = { supplier_id: form.supplier_id, order_type: form.order_type, remark: form.remark, items: items.value.map(x => ({ drug_id: x.drug_id, quantity: x.quantity, unit_price: x.unit_price })) }
+    // 注意：PurchaseOrder 模型无 order_type 字段（传入会 500），
+    // 退货入库语义通过备注前缀保留；order_no/order_date/total_amount 由后端生成与计算
+    const typeLabel = form.order_type === 'return' ? '退货入库' : '采购入库'
+    const payload = {
+      supplier_id: form.supplier_id,
+      // order_date 非空，后端不会自动补，需前端传当天
+      order_date: new Date().toISOString().slice(0, 10),
+      remark: [typeLabel, form.remark].filter(Boolean).join('：'),
+      items: items.value.map(x => ({ drug_id: x.drug_id, quantity: x.quantity, unit_price: x.unit_price })),
+    }
     if (id) await updatePurchaseOrder(id, payload)
     else await createPurchaseOrder(payload)
     ElMessage.success('保存成功')

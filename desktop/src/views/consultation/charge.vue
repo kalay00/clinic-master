@@ -13,6 +13,15 @@
       </div>
 
       <div class="charge-form">
+        <div class="charge-items">
+          <div class="charge-items-title">待收费项目</div>
+          <div v-if="!billingBills.length" class="charge-items-empty">暂无待收费账单</div>
+          <div v-for="b in billingBills" :key="b.id" class="charge-item">
+            <span>{{ billTypeLabel[b.bill_type] || b.bill_type }}（{{ b.bill_no || '' }}）</span>
+            <span class="charge-item-amount">¥{{ Number(b.total_amount || 0).toFixed(2) }}</span>
+          </div>
+        </div>
+
         <div class="charge-row">
           <label>优惠金额</label>
           <div class="charge-input-wrap">
@@ -78,8 +87,7 @@
 import { reactive, computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getPrescriptions } from '@/api/treatment'
-import { createBill, payBill } from '@/api/payment'
+import { getBills, payBill } from '@/api/payment'
 import { getRegistration } from '@/api/registration'
 
 const router = useRouter()
@@ -88,7 +96,15 @@ const route = useRoute()
 const regId = computed(() => route.query.regId || '')
 const patientId = ref('')
 const registrationId = ref('')
-const billingItems = ref([])
+// 本次挂账下未结的账单（挂号费单 + 处方自动生成的处方单）
+const billingBills = ref([])
+const billTypeLabel = {
+  registration: '挂号费',
+  prescription: '处方费',
+  consultation: '诊疗费',
+  treatment: '治疗费',
+  pharmacy: '药品费',
+}
 
 onMounted(async () => {
   if (regId.value) {
@@ -98,33 +114,28 @@ onMounted(async () => {
       patientId.value = reg.patient_id || ''
     } catch (e) { /* 忽略 */ }
   }
-  await loadPrescription()
+  if (route.query.patientId && !patientId.value) patientId.value = route.query.patientId
+  await loadBills()
 })
 
-// 取当前挂号未结处方，作为收费项目
-const loadPrescription = async () => {
+// 拉取患者未结账单；有挂号单时只收本次挂号的账，并过滤 0 元历史脏单
+const loadBills = async () => {
   if (!patientId.value) return
   try {
-    const res = await getPrescriptions({ patient_id: patientId.value, registration_id: registrationId.value, page: 1, page_size: 50 })
-    const prescriptions = res.items || []
-    const items = []
-    prescriptions.forEach(p => {
-      const list = Array.isArray(p.items) ? p.items : []
-      list.forEach(it => {
-        const price = Number(it.price || 0)
-        const total = Number(it.total || 1)
-        items.push({ name: it.name, amount: price * total })
-      })
-    })
-    billingItems.value = items
+    const res = await getBills({ patient_id: patientId.value, status: 'unpaid', page: 1, page_size: 100 })
+    const all = res.items || []
+    billingBills.value = all.filter(
+      b => Number(b.total_amount || 0) > 0
+        && (registrationId.value ? b.registration_id === registrationId.value : true)
+    )
     form.actual = receivable.value.toFixed(2)
   } catch (e) {
-    billingItems.value = []
+    billingBills.value = []
   }
 }
 
 const receivable = computed(() => {
-  return billingItems.value.reduce((sum, it) => sum + Number(it.amount || 0), 0)
+  return billingBills.value.reduce((sum, b) => sum + Number(b.total_amount || 0), 0)
 })
 
 const payMethods = [
@@ -156,24 +167,26 @@ const onConfirm = async () => {
     ElMessage.warning('缺少就诊患者信息')
     return
   }
+  if (!billingBills.value.length) {
+    ElMessage.warning('没有待收款的账单')
+    return
+  }
   try {
-    const bill = await createBill({
-      patient_id: patientId.value,
-      registration_id: registrationId.value,
-      bill_type: 'consultation',
-      total_amount: receivable.value,
-      items: billingItems.value,
-    })
-    const billId = bill.id || bill.data?.id
-    await payBill(billId, {
-      payment_method: form.payMethod,
-      amount: actualAmount.value,
-      remark: form.remark,
-    })
+    // 逐单收款；处方单收费后后端会自动将处方标记为已收费，方可发药
+    let firstBillId = ''
+    for (const b of billingBills.value) {
+      await payBill(b.id, {
+        payment_method: form.payMethod,
+        amount: Number(b.total_amount || 0),
+        remark: form.remark,
+      })
+      if (!firstBillId) firstBillId = b.id
+    }
     ElMessage.success('收费成功')
-    router.push('/consultation/charge/confirm')
+    // 跳转到账单详情（原 /consultation/charge/confirm 路由不存在，会进 404）
+    router.push(`/charge/detail/${firstBillId}`)
   } catch (e) {
-    ElMessage.error('收费失败')
+    ElMessage.error(e?.message || '收费失败')
   }
 }
 </script>
@@ -185,6 +198,38 @@ const onConfirm = async () => {
   max-width: 500px;
   margin: 0 auto;
   padding: 24px;
+}
+
+.charge-items {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+
+  .charge-items-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #303133;
+  }
+
+  .charge-items-empty {
+    color: #909399;
+    font-size: 13px;
+    padding: 6px 0;
+  }
+
+  .charge-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 4px 0;
+    color: #606266;
+
+    .charge-item-amount {
+      color: #f56c6c;
+      font-weight: 600;
+    }
+  }
 }
 .charge-header {
   display: flex;

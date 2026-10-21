@@ -419,6 +419,14 @@ class PharmacyService:
                 ]
 
         records: list[Dispense] = []
+        if not dispense_items:
+            # 前端未传明细且处方自身也无法推导出药品时，明确报错，
+            # 避免返回空列表的“假成功”导致处方状态不更新
+            raise CustomException(
+                msg="没有可发药的药品明细（处方明细缺少药品ID）",
+                code=400,
+                status_code=400,
+            )
         for item in dispense_items:
             drug_id = item["drug_id"]
             quantity = item["quantity"]

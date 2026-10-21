@@ -35,12 +35,13 @@ class CustomException(Exception):
         self,
         msg: str = "服务器异常",
         code: int = 500,
-        status_code: int = 500,
+        status_code: Optional[int] = None,
         data: Any = None,
     ) -> None:
         self.msg = msg
         self.code = code
-        self.status_code = status_code
+        # 未显式指定 status_code 时按 code 返回，避免业务错误（如 400/404）被返回成 500
+        self.status_code = status_code if status_code is not None else code
         self.data = data
         super().__init__(msg)
 

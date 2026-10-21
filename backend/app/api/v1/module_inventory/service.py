@@ -167,9 +167,9 @@ class InventoryService:
 
     # ── 采购单 ──
     @staticmethod
-    def _generate_order_no() -> str:
-        """生成采购单号：PO + 毫秒级时间戳，保证唯一且可读。"""
-        return f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')[:17]}"
+    def _generate_order_no(prefix: str = "PO") -> str:
+        """生成单据编号：前缀 + 毫秒级时间戳，保证唯一且可读。"""
+        return f"{prefix}{datetime.now().strftime('%Y%m%d%H%M%S%f')[:17]}"
 
     @staticmethod
     def _parse_date(value):
@@ -493,12 +493,19 @@ class InventoryService:
         purchase_order_id = order_data["purchase_order_id"]
         po = await self.po_crud.get(id=purchase_order_id, preload=["items"])
         if not po:
-            raise CustomException(msg="采购单不存在")
+            raise CustomException(msg="采购单不存在", code=404, status_code=404)
         if po.status != "received":
-            raise CustomException(msg="只能对已入库的采购单进行退货", code=400)
-        items = order_data.get("items") or []
+            raise CustomException(msg="只能对已入库的采购单进行退货", code=400, status_code=400)
+        # 必须 pop 掉 items：否则会随 order_data 一起传入模型构造，
+        # SQLAlchemy 将 dict 列表当作关系赋值，报 '_sa_instance_state' 错误
+        items = order_data.pop("items", None) or []
         if not items:
-            raise CustomException(msg="退货明细不能为空", code=400)
+            raise CustomException(msg="退货明细不能为空", code=400, status_code=400)
+        # 退货日期非空，前端传 YYYY-MM-DD 字符串，需解析为 date（否则 asyncpg DataError）
+        order_data["return_date"] = self._parse_date(order_data.get("return_date"))
+        # 后端不生成退货单号，模型非空唯一，前端未传时兜底生成
+        if not order_data.get("return_no"):
+            order_data["return_no"] = self._generate_order_no("RET")
 
         total_amount = Decimal("0")
         purchase_item_map = {str(it.id): it for it in po.items}

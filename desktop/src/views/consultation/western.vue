@@ -882,10 +882,12 @@ const onSave = async () => {
       const list = prescriptionData[tab.key] || []
       if (!list.length) continue
       if (tab.type === 'inspection') {
+        const total = list.reduce((s, it) => s + Number(it.price || 0) * (Number(it.qty) || 1), 0)
         await createPrescription({
           patient_id: patientId.value,
           doctor_id: doctorId.value,
           prescription_type: 'inspection',
+          total_amount: Number(total.toFixed(2)),
           items: list.map(it => ({
             name: it.name,
             position: it.position,
@@ -894,11 +896,14 @@ const onSave = async () => {
           })),
         })
       } else {
+        const total = list.reduce((s, it) => s + Number(it.price || 0) * (Number(it.total) || 1), 0)
         await createPrescription({
           patient_id: patientId.value,
           doctor_id: doctorId.value,
           prescription_type: tab.type,
+          total_amount: Number(total.toFixed(2)),
           items: list.map(it => ({
+            drug_id: it.id,
             name: it.name,
             spec: it.spec,
             group: it.group,
@@ -909,6 +914,7 @@ const onSave = async () => {
             days: it.days,
             total: it.total,
             total_unit: it.totalUnit,
+            quantity: Number(it.total) || 1,
             price: it.price,
           })),
         })

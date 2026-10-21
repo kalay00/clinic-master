@@ -379,6 +379,7 @@ class RegistrationService:
                 raise CustomException(
                     msg="该患者在同一医生、同一时间段已经挂过号，不能重复挂号。",
                     code=400,
+                    status_code=400,
                 )
 
         registration = await self.crud.create(registration_data)

@@ -35,7 +35,8 @@
     </div>
     <div class="his-footer-bar" v-if="info.status && info.status !== 'cancelled'">
       <el-button @click="onBack">关闭</el-button>
-      <el-button v-if="info.status === 'submitted'" type="primary" :loading="acting" @click="onApprove">审核</el-button>
+      <!-- 后端审核不限制源状态：草稿(draft)/待审核(submitted)均可审核，已审核(approved)可入库 -->
+      <el-button v-if="info.status === 'draft' || info.status === 'submitted'" type="primary" :loading="acting" @click="onApprove">审核</el-button>
       <el-button v-if="info.status === 'approved'" type="success" :loading="acting" @click="onReceive">入库</el-button>
     </div>
   </div>
