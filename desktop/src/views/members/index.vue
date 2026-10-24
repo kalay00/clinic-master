@@ -417,8 +417,16 @@ const saveEdit = async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 .filter-form { margin-bottom: 12px; flex-shrink: 0; :deep(.el-form-item) { margin-bottom: 10px; } }
+/* 表格包裹层：占满剩余空间（必须 flex:1 + min-height:0，否则 flex 子项只缩不增，
+   表格高度会卡在初始测量值导致只显示一条） */
+.table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 .flex-table { flex: 1; }
 .list-pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
 .vip { color: #ffb347; font-weight: 600; }
