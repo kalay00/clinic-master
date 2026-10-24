@@ -69,6 +69,15 @@ export function dispensePrescription(id, items = []) {
   return post('/pharmacy/drugs/dispense', { prescription_id: id, items }).then(res => res.data)
 }
 
+// 发药记录列表（GET /pharmacy/drugs/dispenses），按处方ID查询发药明细
+export function getDispenses(params = {}) {
+  const page = params.page || 1
+  const pageSize = params.page_size || params.pageSize || 100
+  const query = { page, page_size: pageSize }
+  if (params.prescription_id) query.prescription_id = params.prescription_id
+  return get('/pharmacy/drugs/dispenses', query).then(res => res.data)
+}
+
 // 库存列表（GET /pharmacy/drugs/inventory，关联药品表返回药品信息 + 库存数量）
 export function getInventory(params = {}) {
   const backend = {

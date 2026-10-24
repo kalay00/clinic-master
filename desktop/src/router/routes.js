@@ -263,6 +263,12 @@ export const asyncRoutes = [
         meta: { title: '药品发药', icon: 'Sell' }
       },
       {
+        path: 'dispense/detail/:id',
+        name: 'DispenseDetail',
+        component: () => import('@/views/drugs/dispense-detail.vue'),
+        meta: { title: '发药详情', hidden: true }
+      },
+      {
         path: 'stock',
         name: 'DrugStock',
         component: () => import('@/views/drugs/stock.vue'),

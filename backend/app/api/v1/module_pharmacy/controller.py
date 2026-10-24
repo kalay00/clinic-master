@@ -36,6 +36,25 @@ async def dispense_prescription_(
     return SuccessResponse(data=result, msg="发药成功")
 
 
+@router.get("/dispenses", summary="发药记录列表（按处方）", dependencies=[Depends(AuthPermission(permission=["pharmacy:list"]))])
+async def list_dispenses_(
+    auth: AuthSchema = Depends(get_current_user),
+    prescription_id: Optional[str] = Query(None, description="处方ID"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+):
+    """发药记录列表：可按处方ID过滤，供发药详情页展示发药明细。"""
+    items, total = await PharmacyService(auth).list_dispenses(
+        prescription_id=prescription_id,
+        skip=(page - 1) * page_size,
+        limit=page_size,
+    )
+    return SuccessResponse(
+        data={"items": [it.model_dump() for it in items], "total": total, "page": page, "page_size": page_size},
+        msg="查询成功",
+    )
+
+
 @router.get("", summary="获取药房列表", dependencies=[Depends(AuthPermission(permission=["pharmacy:list"]))])
 async def list_(
     auth: AuthSchema = Depends(get_current_user),

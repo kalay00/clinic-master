@@ -27,7 +27,7 @@
           <template #default="{ row }">{{ fmt(row.total_amount) }}</template>
         </el-table-column>
         <el-table-column prop="created_at" label="开方时间" min-width="160" />
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'paid'"
@@ -36,7 +36,8 @@
               :loading="actingId === row.id"
               @click="onDispense(row)"
             >发药</el-button>
-            <span v-else style="color:#67c23a">已发药</span>
+            <el-button link type="primary" @click="onDetail(row)">详情</el-button>
+            <span v-if="row.status !== 'paid'" style="color:#67c23a">已发药</span>
           </template>
         </el-table-column>
       </el-table>
@@ -60,12 +61,14 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getPrescriptions } from '@/api/treatment'
 import { dispensePrescription } from '@/api/pharmacy'
 
 defineOptions({ name: 'DrugDispense' })
 
+const router = useRouter()
 const loading = ref(false)
 const actingId = ref('')
 const statusTab = ref('paid')
@@ -94,6 +97,8 @@ async function fetchList() {
 
 const onTabChange = () => { query.page = 1; fetchList() }
 const onSizeChange = () => { query.page = 1; fetchList() }
+
+const onDetail = (row) => router.push(`/drugs/dispense/detail/${row.id}`)
 
 const onDispense = async (row) => {
   try {
