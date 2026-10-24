@@ -1,21 +1,20 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">编辑患者信息</div>
-      <div class="head-actions">
-        <el-button type="primary" :icon="DocumentChecked" :loading="saving" @click="onSave">保存</el-button>
-        <el-button :icon="Back" @click="onBack">返回</el-button>
+  <div class="patient-edit-page">
+    <el-card class="page-card" shadow="never">
+      <div class="card-header">
+        <el-tabs v-model="activeTab" class="patient-tabs">
+          <el-tab-pane label="个人信息" name="info"></el-tab-pane>
+          <el-tab-pane label="电子病历" name="records"></el-tab-pane>
+          <el-tab-pane label="收费记录" name="charges"></el-tab-pane>
+        </el-tabs>
+        <div class="head-actions">
+          <el-button type="primary" :icon="DocumentChecked" :loading="saving" @click="onSave">保存</el-button>
+          <el-button :icon="Back" @click="onBack">返回</el-button>
+        </div>
       </div>
-    </div>
 
-    <el-card class="page-card" shadow="never" :body-style="{ padding: '20px' }">
-      <el-tabs v-model="activeTab" class="patient-tabs">
-        <el-tab-pane label="个人信息" name="info"></el-tab-pane>
-        <el-tab-pane label="电子病历" name="records"></el-tab-pane>
-        <el-tab-pane label="收费记录" name="charges"></el-tab-pane>
-      </el-tabs>
-
-      <div v-if="activeTab === 'info'">
+      <div class="page-body">
+      <div v-if="activeTab === 'info'" class="pane-scroll">
         <div class="section-title">基本信息</div>
         <el-form :model="form" label-width="110px" class="patient-form">
           <el-row :gutter="24">
@@ -71,7 +70,7 @@
         </el-table>
       </div>
 
-      <div v-else-if="activeTab === 'records'" class="record-layout">
+      <div v-else-if="activeTab === 'records'" class="pane-scroll record-layout">
         <el-row :gutter="20">
           <el-col :span="8">
             <div v-if="recordsLoading" class="empty-tip">加载中...</div>
@@ -126,7 +125,7 @@
         </el-row>
       </div>
 
-      <div v-else-if="activeTab === 'charges'">
+      <div v-else-if="activeTab === 'charges'" class="pane-scroll">
         <div class="total-bar">消费总计金额：<span class="amount">{{ totalCharge.toFixed(2) }}元</span></div>
         <div class="section-title">消费明细</div>
         <el-table :data="charges" border stripe v-loading="chargesLoading" class="charge-table" header-cell-class-name="charge-header" style="width: 100%">
@@ -156,6 +155,7 @@
             </template>
           </el-table-column>
         </el-table>
+      </div>
       </div>
     </el-card>
 
@@ -419,10 +419,47 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; }
-.head-actions { display: flex; gap: 10px; }
-.page-card { border-radius: 8px; border: 1px solid #e4e7ed; }
-.patient-tabs { margin-bottom: 20px; }
+/* 固定高度布局：页面不滚动，页签/操作固定，面板内容内部滚动 */
+.patient-edit-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .patient-tabs { flex: 1; min-width: 0; }
+  .head-actions { display: flex; gap: 10px; flex-shrink: 0; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.pane-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.patient-tabs { margin-bottom: 0; }
 .patient-tabs :deep(.el-tabs__header) { margin-bottom: 0; border-bottom: 1px solid #e4e7ed; }
 .patient-tabs :deep(.el-tabs__nav-wrap::after) { height: 1px; background-color: #e4e7ed; }
 .patient-tabs :deep(.el-tabs__item) { color: #606266; font-weight: 500; }
