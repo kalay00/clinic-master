@@ -1,18 +1,17 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">会员管理</div>
-      <el-button :icon="Download" @click="onExport">导出</el-button>
-    </div>
-
+  <div class="members-page">
     <el-card class="page-card" shadow="never">
-      <el-radio-group v-model="activeTab" class="status-tabs" fill="#5b7cff">
-        <el-radio-button label="list">会员列表</el-radio-button>
-        <el-radio-button label="stored">储值管理</el-radio-button>
-        <el-radio-button label="points">积分管理</el-radio-button>
-        <el-radio-button label="settings">会员设置</el-radio-button>
-      </el-radio-group>
+      <div class="card-header">
+        <el-radio-group v-model="activeTab" class="status-tabs" fill="#5b7cff">
+          <el-radio-button label="list">会员列表</el-radio-button>
+          <el-radio-button label="stored">储值管理</el-radio-button>
+          <el-radio-button label="points">积分管理</el-radio-button>
+          <el-radio-button label="settings">会员设置</el-radio-button>
+        </el-radio-group>
+        <el-button :icon="Download" @click="onExport">导出</el-button>
+      </div>
 
+      <div class="page-body">
       <template v-if="activeTab === 'list'">
         <el-form :inline="true" class="filter-form">
           <el-form-item label="会员等级">
@@ -31,7 +30,8 @@
             <el-checkbox v-model="listQuery.expireWarning">会员到期预警</el-checkbox>
           </el-form-item>
         </el-form>
-        <el-table :data="members" border stripe v-loading="loading">
+        <div class="table-wrap" ref="tableWrapRef">
+        <el-table :data="members" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
           <el-table-column type="index" label="序号" width="55" />
           <el-table-column prop="patient_no" label="卡号" width="130" />
           <el-table-column label="会员等级" width="100">
@@ -65,6 +65,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </template>
 
       <template v-else-if="activeTab === 'stored'">
@@ -82,7 +83,8 @@
             <el-button type="primary" :icon="Search" @click="onSearch">查询</el-button>
           </el-form-item>
         </el-form>
-        <el-table :data="members" border stripe v-loading="loading">
+        <div class="table-wrap" ref="tableWrapRef">
+        <el-table :data="members" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
           <el-table-column type="index" label="序号" width="55" />
           <el-table-column prop="patient_no" label="卡号" width="130" />
           <el-table-column label="会员等级" width="100"><template #default="{ row }"><span class="vip">{{ row.member_level_name || '非会员' }}</span></template></el-table-column>
@@ -100,6 +102,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </template>
 
       <template v-else-if="activeTab === 'points'">
@@ -117,7 +120,8 @@
             <el-button type="primary" :icon="Search" @click="onSearch">查询</el-button>
           </el-form-item>
         </el-form>
-        <el-table :data="members" border stripe v-loading="loading">
+        <div class="table-wrap" ref="tableWrapRef">
+        <el-table :data="members" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
           <el-table-column type="index" label="序号" width="55" />
           <el-table-column prop="patient_no" label="卡号" min-width="130" />
           <el-table-column label="会员等级" min-width="100"><template #default="{ row }"><span class="vip">{{ row.member_level_name || '非会员' }}</span></template></el-table-column>
@@ -131,6 +135,7 @@
             </template>
           </el-table-column>
         </el-table>
+        </div>
       </template>
 
       <template v-else>
@@ -138,7 +143,8 @@
           <el-button type="primary" :icon="Plus" @click="showMemberType = true">新增会员类型</el-button>
           <el-button type="warning" :icon="Setting" @click="showCondition = true">会员条件设置</el-button>
         </div>
-        <el-table :data="settingsData" border stripe v-loading="levelsLoading">
+        <div class="table-wrap" ref="tableWrapRef">
+        <el-table :data="settingsData" border stripe v-loading="levelsLoading" ref="tableRef" :height="tableHeight">
           <el-table-column type="index" label="序号" width="55" />
           <el-table-column label="会员等级" min-width="120"><template #default="{ row }"><span class="vip">{{ row.name }}</span></template></el-table-column>
           <el-table-column prop="name" label="会员名称" min-width="160" />
@@ -147,7 +153,9 @@
           <el-table-column prop="status" label="状态" min-width="100"><template #default="{ row }"><el-switch :model-value="row.status === 'active'" /></template></el-table-column>
           <el-table-column label="操作" width="100" align="center"><template #default="{ row }"><el-button type="primary" link @click="openEditLevel(row)">编辑</el-button></template></el-table-column>
         </el-table>
+        </div>
       </template>
+      </div>
 
       <el-pagination class="list-pagination" v-model:current-page="page" :current-page="page" v-model:page-size="pageSize" layout="total, prev, pager, next, jumper" :total="total" @current-change="(p) => { page = p; fetchMembers() }" @size-change="(s) => { pageSize = s; fetchMembers() }" />
     </el-card>
@@ -201,7 +209,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Search, Plus, Setting } from '@element-plus/icons-vue'
 import MemberTypeDialog from './member-type.vue'
@@ -233,6 +241,44 @@ const storedQuery = reactive({ level_id: '', keyword: '' })
 const pointsQuery = reactive({ level_id: '', keyword: '' })
 
 const settingsData = ref([])
+
+// 表格内部滚动：测量包裹容器高度，绑定为 el-table 数值高度（EP 的 height="100%" 不计算内部高度）
+const tableWrapRef = ref(null)
+const tableRef = ref(null)
+const tableHeight = ref(400)
+let tableResizeObserver = null
+
+const calcTableHeight = async () => {
+  const el = tableWrapRef.value
+  if (el && el.clientHeight) tableHeight.value = el.clientHeight
+  // 高度/数据变化后主动刷新 EP 内部布局，否则 body-wrapper 停在 overflow:hidden
+  await nextTick()
+  tableRef.value?.doLayout?.()
+}
+
+onMounted(() => {
+  fetchLevels()
+  fetchMembers()
+  calcTableHeight()
+  if (typeof ResizeObserver !== 'undefined') {
+    tableResizeObserver = new ResizeObserver(calcTableHeight)
+    if (tableWrapRef.value) tableResizeObserver.observe(tableWrapRef.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (tableResizeObserver) {
+    tableResizeObserver.disconnect()
+    tableResizeObserver = null
+  }
+})
+
+// 切换页签后重新测量（v-if 切换，DOM 节点重建）
+watch(activeTab, async () => {
+  await nextTick()
+  calcTableHeight()
+  if (tableResizeObserver && tableWrapRef.value) tableResizeObserver.observe(tableWrapRef.value)
+})
 
 const showMemberType = ref(false)
 const editLevelData = ref(null)
@@ -276,6 +322,8 @@ async function fetchMembers() {
     ElMessage.error('加载会员列表失败')
   } finally {
     loading.value = false
+    // 数据渲染后刷新表格布局，恢复内部滚动能力
+    nextTick(() => tableRef.value?.doLayout?.())
   }
 }
 
@@ -334,17 +382,44 @@ const saveEdit = async () => {
     editLoading.value = false
   }
 }
-
-onMounted(() => {
-  fetchLevels()
-  fetchMembers()
-})
 </script>
 
 <style lang="scss" scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; }
-.status-tabs { margin-bottom: 16px; }
-.filter-form { margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
-.list-pagination { justify-content: flex-end; margin-top: 12px; }
+.members-page {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: hidden;
+}
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .status-tabs { margin-bottom: 0; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.filter-form { margin-bottom: 12px; flex-shrink: 0; :deep(.el-form-item) { margin-bottom: 10px; } }
+.flex-table { flex: 1; }
+.list-pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
 .vip { color: #ffb347; font-weight: 600; }
 </style>
