@@ -1,7 +1,6 @@
 <template>
-  <div class="page-card">
-    <div class="page-title">账号信息</div>
-
+  <div class="settings-form-page">
+    <el-card class="page-card" shadow="never">
     <el-form :model="form" label-width="100px" style="max-width: 560px" v-loading="loading">
       <el-form-item label="用户名">
         <el-input v-model="form.username" disabled />
@@ -28,6 +27,7 @@
         <el-button @click="fetchProfile">重置</el-button>
       </el-form-item>
     </el-form>
+  </el-card>
   </div>
 </template>
 
@@ -84,13 +84,14 @@ async function submit() {
 onMounted(fetchProfile)
 </script>
 
-<style scoped lang="scss">
-.role-tags {
+<style lang="scss" scoped>
+/* 固定高度布局：页面不滚动 */
+.settings-form-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.text-muted {
-  color: #909399;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) { flex: 1; overflow: auto; min-height: 0; padding: 16px 20px; }
 }
 </style>

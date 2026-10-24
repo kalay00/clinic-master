@@ -1,7 +1,6 @@
 <template>
-  <div class="page-card" v-loading="loading">
-    <div class="page-title">基础设置</div>
-
+  <div class="settings-form-page">
+    <el-card class="page-card" shadow="never" v-loading="loading">
     <el-tabs v-model="activeTab">
       <el-tab-pane label="挂号设置" name="registration">
         <el-form :model="cfg.registration" label-width="140px" style="max-width: 620px">
@@ -120,6 +119,7 @@
       <el-button type="primary" :loading="submitting" @click="submit">保存设置</el-button>
       <el-button @click="fetchConfig">重置</el-button>
     </div>
+  </el-card>
   </div>
 </template>
 
@@ -217,15 +217,14 @@ onMounted(() => {
 })
 </script>
 
-<style scoped lang="scss">
-.tip {
-  margin-left: 10px;
-  color: #909399;
-  font-size: 13px;
-}
-.form-actions {
-  margin-top: 8px;
-  padding-top: 16px;
-  border-top: 1px solid #ebeef5;
+<style lang="scss" scoped>
+/* 固定高度布局：页面不滚动 */
+.settings-form-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) { flex: 1; overflow: auto; min-height: 0; padding: 16px 20px; }
 }
 </style>

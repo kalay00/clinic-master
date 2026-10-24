@@ -1,11 +1,14 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">患者统计</div>
-      <el-button :icon="Download" @click="onExport">导出</el-button>
-    </div>
+  <div class="stat-patient-page">
 
     <el-card class="page-card" shadow="never">
+      <div class="card-header">
+        <div class="head-actions">
+        <el-button :icon="Download" @click="onExport">导出</el-button>
+        </div>
+      </div>
+
+      <div class="page-body">
       <el-form :inline="true" class="filter-form">
         <el-form-item label="时间范围">
           <el-date-picker v-model="dateRange" type="daterange" range-separator="-" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width: 240px" />
@@ -31,7 +34,8 @@
               <el-table-column prop="name" label="性别" />
               <el-table-column prop="value" label="人数" align="right" />
             </el-table>
-          </el-card>
+          
+    </el-card>
         </el-col>
         <el-col :span="12">
           <el-card shadow="never" class="sub-card" v-loading="loading">
@@ -43,7 +47,8 @@
           </el-card>
         </el-col>
       </el-row>
-    </el-card>
+      </div>
+        </el-card>
   </div>
 </template>
 
@@ -91,12 +96,37 @@ onMounted(fetchData)
 </script>
 
 <style lang="scss" scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; }
-.filter-form { margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
-.stat-card { background: linear-gradient(135deg, #eef3ff, #f7f9ff); border-radius: 12px; padding: 18px 20px; border: 1px solid #e8eeff;
-  .stat-label { color: #909399; font-size: 13px; }
-  .stat-value { color: #5b7cff; font-size: 26px; font-weight: 700; margin-top: 6px; }
-  &.warn .stat-value { color: #ffb347; }
+/* 固定高度布局：页面不滚动，内容区整体内部滚动 */
+.stat-patient-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
 }
-.sub-card { .sub-title { font-size: 15px; font-weight: 600; color: #303133; margin-bottom: 12px; } }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .head-actions { display: flex; gap: 10px; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-height: 0;
+}
+.filter-form { flex-shrink: 0; margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
 </style>

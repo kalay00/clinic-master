@@ -2,7 +2,6 @@
   <div class="drugs-page">
     <el-card class="page-card" shadow="never">
       <div class="card-header">
-        <span class="card-title">药品信息维护</span>
         <div class="head-actions">
           <el-button type="primary" :icon="Plus" @click="goCreate">新增药品</el-button>
           <el-button type="primary" plain :icon="FullScreen" @click="scanCreate">扫码录入</el-button>
@@ -194,7 +193,6 @@ onMounted(() => {
   gap: 12px;
   flex-shrink: 0;
   margin-bottom: 12px;
-  .card-title { font-size: 15px; font-weight: 600; color: #303133; }
   .head-actions {
     display: flex;
     gap: 10px;

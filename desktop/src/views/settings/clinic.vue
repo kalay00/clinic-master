@@ -1,7 +1,6 @@
 <template>
-  <div class="his-page">
+  <div class="his-page clinic-page">
     <div class="clinic-header">
-      <div class="clinic-title">诊所信息维护</div>
       <button class="his-btn his-btn-primary" :disabled="saving" @click="onSave">
         <span v-if="saving" class="btn-spinner"></span>
         <span>保存</span>
@@ -189,21 +188,30 @@ onMounted(loadData)
 </script>
 
 <style lang="scss" scoped>
+/* 固定高度布局：页面不滚动，表单内容区内部滚动 */
+.clinic-page {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.clinic-card {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
 .clinic-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-bottom: 20px;
+  flex-shrink: 0;
 }
 
-.clinic-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2937;
-  padding-left: 12px;
-  border-left: 4px solid #5b7cff;
-  line-height: 1.2;
-}
+
 
 .clinic-card {
   background: #fff;

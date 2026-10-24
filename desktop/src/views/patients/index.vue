@@ -2,7 +2,6 @@
   <div class="patients-page">
     <el-card class="page-card" shadow="never">
       <div class="card-header">
-        <span class="card-title">患者管理</span>
         <div class="head-actions">
           <el-button type="primary" :icon="Plus" @click="goCreate">新增患者</el-button>
           <el-button :icon="Download" @click="onExport">导出</el-button>
@@ -252,7 +251,6 @@ onMounted(() => {
   gap: 12px;
   flex-shrink: 0;
   margin-bottom: 12px;
-  .card-title { font-size: 15px; font-weight: 600; color: #303133; }
   .head-actions { display: flex; gap: 10px; }
 }
 .page-body {

@@ -1,19 +1,16 @@
 <template>
-  <div class="his-page">
-    <div class="his-page-head">
-      <div>
-        <div class="his-page-title">药品发药</div>
-        <div class="his-page-subtitle">处方收费后发药，自动扣减库存并生成发药记录</div>
+  <div class="dispense-page">
+    <el-card class="page-card" shadow="never">
+      <div class="card-header">
+        <el-tabs v-model="statusTab" @tab-change="onTabChange">
+          <el-tab-pane label="待发药" name="paid" />
+          <el-tab-pane label="已发药" name="dispensed" />
+        </el-tabs>
       </div>
-    </div>
 
-    <el-card shadow="never">
-      <el-tabs v-model="statusTab" @tab-change="onTabChange">
-        <el-tab-pane label="待发药" name="paid" />
-        <el-tab-pane label="已发药" name="dispensed" />
-      </el-tabs>
-
-      <el-table :data="tableData" border stripe v-loading="loading">
+      <div class="page-body">
+        <div class="table-wrap" ref="wrapRef">
+          <el-table :data="tableData" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
         <el-table-column type="index" label="序号" width="55" />
         <el-table-column prop="prescription_no" label="处方号" min-width="150" />
         <el-table-column label="患者" min-width="140">
@@ -41,9 +38,11 @@
           </template>
         </el-table-column>
       </el-table>
+        </div>
 
-      <div class="dispense-tip">
-        说明：发药后库存自动扣减；租户开启「药师审核」时，发药记录先生成为待审核，由药师在审核通过后完成发药。
+        <div class="dispense-tip">
+          说明：发药后库存自动扣减；租户开启「药师审核」时，发药记录先生成为待审核，由药师在审核通过后完成发药。
+        </div>
       </div>
 
       <el-pagination
@@ -65,10 +64,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getPrescriptions } from '@/api/treatment'
 import { dispensePrescription } from '@/api/pharmacy'
+import { useTableHeight } from '@/composables/useTableHeight'
 
 defineOptions({ name: 'DrugDispense' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const actingId = ref('')
 const statusTab = ref('paid')
@@ -92,6 +93,7 @@ async function fetchList() {
     tableData.value = []
   } finally {
     loading.value = false
+    refresh()
   }
 }
 
@@ -127,10 +129,40 @@ onMounted(fetchList)
 </script>
 
 <style lang="scss" scoped>
+/* 固定高度布局：页面不滚动，页签/分页固定，仅列表内部滚动 */
+.dispense-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  :deep(.el-tabs__header) { margin-bottom: 0; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
 .dispense-tip {
   margin-top: 12px;
   color: #909399;
   font-size: 12px;
+  flex-shrink: 0;
 }
-.list-pagination { justify-content: flex-end; margin-top: 12px; }
+.list-pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
 </style>

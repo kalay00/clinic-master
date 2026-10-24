@@ -1,8 +1,8 @@
 <template>
-  <div class="page-card">
-    <div class="page-title">平台管理</div>
-
-    <el-row :gutter="16" class="stat-row">
+  <div class="settings-platform-page">
+    <el-card class="page-card" shadow="never">
+      <div class="page-body">
+      <el-row :gutter="16" class="stat-row">
       <el-col :span="8">
         <el-card shadow="hover">
           <div class="stat-label">租户总数</div>
@@ -23,13 +23,16 @@
       </el-col>
     </el-row>
 
-    <el-tabs v-model="activeTab" class="mt-16">
-      <el-tab-pane label="租户列表" name="tenants" />
-      <el-tab-pane label="审计日志" name="logs" />
-    </el-tabs>
+      <div class="card-header">
+        <el-tabs v-model="activeTab">
+          <el-tab-pane label="租户列表" name="tenants" />
+          <el-tab-pane label="审计日志" name="logs" />
+        </el-tabs>
+      </div>
 
     <template v-if="activeTab === 'tenants'">
-      <el-table :data="tenants" border stripe v-loading="loadingTenants">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table :data="tenants" border stripe v-loading="loadingTenants" ref="tableRef" :height="tableHeight">
         <el-table-column type="index" label="#" width="60" align="center" />
         <el-table-column prop="tenant_code" label="租户编码" width="140" />
         <el-table-column prop="name" label="诊所名称" min-width="160" />
@@ -48,6 +51,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <div class="pagination">
         <el-pagination
           v-model:current-page="tenantQuery.page"
@@ -62,7 +66,8 @@
     </template>
 
     <template v-else>
-      <el-table :data="logs" border stripe v-loading="loadingLogs">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table :data="logs" border stripe v-loading="loadingLogs" ref="tableRef" :height="tableHeight">
         <el-table-column type="index" label="#" width="60" align="center" />
         <el-table-column prop="tenant_name" label="租户" width="160" />
         <el-table-column prop="action" label="操作" min-width="140" />
@@ -72,6 +77,7 @@
           <template #default="{ row }">{{ row.created_at || '-' }}</template>
         </el-table-column>
       </el-table>
+      </div>
       <div class="pagination">
         <el-pagination
           v-model:current-page="logQuery.page"
@@ -84,6 +90,8 @@
         />
       </div>
     </template>
+      </div>
+  </el-card>
   </div>
 </template>
 
@@ -92,8 +100,10 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getTenants, getStatistics, getAuditLogs, updateTenant } from '@/api/platform'
 
+import { useTableHeight } from '@/composables/useTableHeight'
 const activeTab = ref('tenants')
 const stats = ref({})
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loadingTenants = ref(false)
 const loadingLogs = ref(false)
 
@@ -158,25 +168,42 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.stat-row {
-  margin-bottom: 8px;
-}
-.stat-label {
-  color: #888;
-  font-size: 13px;
-}
-.stat-value {
-  font-size: 26px;
-  font-weight: 600;
-  margin-top: 6px;
-  color: #5b7cff;
-}
-.mt-16 {
-  margin-top: 16px;
-}
-.pagination {
+/* 固定高度布局：页面不滚动，仅列表内部滚动 */
+.settings-platform-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
 }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  :deep(.el-tabs__header) { margin-bottom: 0; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.stat-row { margin-bottom: 8px; flex-shrink: 0; }
+.stat-label { color: #888; font-size: 13px; }
+.stat-value { font-size: 26px; font-weight: 600; margin-top: 6px; color: #5b7cff; }
+.mt-16 { margin-top: 16px; }
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.pagination { display: flex; justify-content: flex-end; margin-top: 16px; flex-shrink: 0; }
 </style>

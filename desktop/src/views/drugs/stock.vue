@@ -1,13 +1,12 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">库存管理</div>
-      <div class="head-actions">
+  <div class="stock-page">
+    <el-card class="page-card" shadow="never">
+      <div class="page-body">
+      <div class="card-header">
+        <div class="head-actions">
         <el-button :icon="Download" @click="onExport">导出</el-button>
       </div>
-    </div>
-
-    <el-card class="page-card" shadow="never">
+      </div>
       <el-form :inline="true" class="filter-form">
         <el-form-item label="处方类别">
           <el-select v-model="query.category" placeholder="全部" clearable style="width: 130px">
@@ -29,7 +28,8 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe v-loading="loading">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table ref="tableRef" :height="tableHeight" :data="tableData" border stripe v-loading="loading">
         <el-table-column type="index" label="序号" width="55" />
         <el-table-column prop="drug_code" label="药品编码" width="100" />
         <el-table-column prop="drug_name" label="药品名称" min-width="160" />
@@ -53,10 +53,12 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <div class="summary-bar">
         <span>采购金额合计：<span class="amount">67379.12元</span></span>
         <span class="ml-lg">零售金额合计：<span class="amount">81111.08元</span></span>
+      </div>
       </div>
 
       <el-pagination
@@ -79,9 +81,11 @@ import { ElMessage } from 'element-plus'
 import { Search, View, Warning, Calendar, Setting, Download } from '@element-plus/icons-vue'
 import { getInventory, getInventoryWarnings } from '@/api/pharmacy'
 
+import { useTableHeight } from '@/composables/useTableHeight'
 defineOptions({ name: 'DrugStock' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const total = ref(0)
 const tableData = ref([])
@@ -103,9 +107,7 @@ async function onSearch() {
     total.value = data.total || 0
   } catch (e) {
     ElMessage.error('加载库存列表失败')
-  } finally {
-    loading.value = false
-  }
+  } finally { loading.value = false; refresh() }
 }
 const onStockWarning = async () => {
   try {
@@ -123,21 +125,43 @@ onMounted(onSearch)
 </script>
 
 <style lang="scss" scoped>
-.page-head {
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.stock-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.page-card {
+  height: 100%;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.head-actions {
-  display: flex;
-  gap: 10px;
-}
-.filter-form {
-  margin-bottom: 12px;
-  :deep(.el-form-item) {
-    margin-bottom: 10px;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
   }
 }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form, .filter-bar { flex-shrink: 0; margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination, .pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
+
+/* 页面特有样式 */
 .filter-right {
   margin-left: auto;
 }
@@ -149,9 +173,5 @@ onMounted(onSearch)
     color: #f56c6c;
     font-weight: 600;
   }
-}
-.list-pagination {
-  justify-content: flex-end;
-  margin-top: 12px;
 }
 </style>

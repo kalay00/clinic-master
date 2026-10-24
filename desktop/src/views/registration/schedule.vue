@@ -21,13 +21,16 @@
 
     <!-- 周表格 -->
     <el-card shadow="never" class="week-card">
-      <el-table
-        :data="doctorRows"
-        border
-        stripe
-        v-loading="loading"
-        :empty-text="emptyText"
-      >
+      <div class="table-wrap" ref="wrapRef">
+        <el-table
+          :data="doctorRows"
+          border
+          stripe
+          v-loading="loading"
+          :empty-text="emptyText"
+          ref="tableRef"
+          :height="tableHeight"
+        >
         <el-table-column prop="name" label="医生姓名" width="100" fixed />
         <el-table-column prop="dept_name" label="科室" width="120" fixed />
 
@@ -70,6 +73,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </el-card>
 
     <!-- 设置排班弹窗（按医生 + 当前月） -->
@@ -149,9 +153,11 @@ import { getSchedules, createSchedule, updateSchedule, deleteSchedule, pauseSche
 import { getDepartments } from '@/api/department'
 import { getDoctors } from '@/api/doctor'
 import { fetchAllPages } from '@/utils/paging'
+import { useTableHeight } from '@/composables/useTableHeight'
 
 defineOptions({ name: 'RegistrationSchedule' })
 
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const emptyText = ref('加载中…')
 const departments = ref([])
@@ -234,6 +240,7 @@ async function fetchSchedules() {
     scheduleMap.value = {}
   } finally {
     loading.value = false
+    refresh()
   }
 }
 
@@ -445,16 +452,43 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
-.schedule-week { background: #f5f7fa; padding: 12px 16px 16px; min-height: 100vh; box-sizing: border-box; }
+/* 固定高度布局：页面不滚动，工具栏固定，医生列表内部滚动 */
+.schedule-week {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
 .page-head {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .week-nav { display: flex; gap: 6px; }
-.week-tip { color: #606266; font-size: 13px; margin-bottom: 10px; }
-.week-card { border-radius: 8px; }
+.week-tip { color: #606266; font-size: 13px; margin-bottom: 10px; flex-shrink: 0; }
+.week-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
 .day-cell {
   display: flex;
   flex-direction: column;

@@ -1,7 +1,6 @@
 <template>
-  <div class="page-card">
-    <div class="page-title">修改密码</div>
-
+  <div class="settings-form-page">
+    <el-card class="page-card" shadow="never">
     <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" style="max-width: 480px">
       <el-form-item label="原密码" prop="old_password">
         <el-input v-model="form.old_password" type="password" show-password placeholder="请输入原密码" />
@@ -17,6 +16,7 @@
         <el-button @click="onReset">重置</el-button>
       </el-form-item>
     </el-form>
+  </el-card>
   </div>
 </template>
 
@@ -67,4 +67,14 @@ async function submit() {
 }
 </script>
 
-<style scoped lang="scss"></style>
+<style lang="scss" scoped>
+/* 固定高度布局：页面不滚动 */
+.settings-form-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) { flex: 1; overflow: auto; min-height: 0; padding: 16px 20px; }
+}
+</style>

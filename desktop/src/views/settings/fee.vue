@@ -1,6 +1,6 @@
 <template>
-  <div class="page-card">
-    <div class="page-title">费用设置</div>
+  <div class="settings-fee-page">
+    <el-card class="page-card" shadow="never">
     <el-tabs v-model="activeType" @tab-change="onTabChange">
       <el-tab-pane label="挂号费" name="registration" />
       <el-tab-pane label="治疗费" name="treatment" />
@@ -19,7 +19,8 @@
       <el-button type="primary" plain @click="openDialog()">新增费用</el-button>
     </div>
 
-    <el-table :data="tableData" border stripe v-loading="loading">
+    <div class="table-wrap" ref="wrapRef">
+      <el-table ref="tableRef" :height="tableHeight" :data="tableData" border stripe v-loading="loading">
       <el-table-column prop="name" label="费用名称" min-width="200" />
       <el-table-column label="金额" min-width="120" align="right">
         <template #default="{ row }">{{ row.amount != null ? `¥${Number(row.amount).toFixed(2)}` : '-' }}</template>
@@ -39,6 +40,7 @@
         </template>
       </el-table-column>
     </el-table>
+      </div>
 
     <div class="pagination">
       <el-pagination
@@ -87,6 +89,7 @@
         <el-button type="primary" :loading="submitting" @click="submit">确定</el-button>
       </template>
     </el-dialog>
+  </el-card>
   </div>
 </template>
 
@@ -95,6 +98,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFees, createFee, updateFee, deleteFee } from '@/api/fee'
 
+import { useTableHeight } from '@/composables/useTableHeight'
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const activeType = ref('registration')
 const tableData = ref([])
 const total = ref(0)
@@ -113,9 +118,7 @@ async function fetchList() {
     })
     tableData.value = res.items || []
     total.value = res.total || 0
-  } finally {
-    loading.value = false
-  }
+  } finally { loading.value = false; refresh() }
 }
 
 function onTabChange() {
@@ -201,19 +204,44 @@ async function handleDelete(row) {
 onMounted(fetchList)
 </script>
 
-<style scoped lang="scss">
-.filter-bar {
+<style lang="scss" scoped>
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.settings-fee-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 }
-.pagination {
+.page-body {
+  flex: 1;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form, .filter-bar { flex-shrink: 0; margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination, .pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
+
+/* 页面特有样式 */
 .tip {
   margin-top: 4px;
   color: #909399;

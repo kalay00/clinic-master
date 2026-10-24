@@ -1,11 +1,12 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">出库管理</div>
-      <el-button type="primary" :icon="Plus" @click="goCreate">新增出库</el-button>
-    </div>
-
+  <div class="outbound-page">
     <el-card class="page-card" shadow="never">
+      <div class="page-body">
+      <div class="card-header">
+        <div class="head-actions">
+          <el-button type="primary" :icon="Plus" @click="goCreate">新增出库</el-button>
+        </div>
+      </div>
       <el-form :inline="true" class="filter-form">
         <el-form-item label="出库状态">
           <el-select v-model="query.status" placeholder="全部" clearable style="width: 130px" @change="onSearch">
@@ -26,7 +27,8 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe v-loading="loading">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table ref="tableRef" :height="tableHeight" :data="tableData" border stripe v-loading="loading">
         <el-table-column type="index" label="序号" width="55" />
         <el-table-column prop="return_no" label="出库单号" min-width="160" />
         <el-table-column prop="created_at" label="创建时间" min-width="160" />
@@ -43,6 +45,8 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
+      </div>
 
       <el-pagination class="list-pagination" v-model:current-page="query.page" v-model:page-size="query.pageSize" layout="total, prev, pager, next, jumper" :total="total" @current-change="fetchList" @size-change="onSizeChange" />
     </el-card>
@@ -56,9 +60,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Refresh, View, Edit, Check } from '@element-plus/icons-vue'
 import { getReturnOrders, completeReturnOrder, deleteReturnOrder } from '@/api/inventory'
 
+import { useTableHeight } from '@/composables/useTableHeight'
 defineOptions({ name: 'DrugOutbound' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const total = ref(0)
 const query = reactive({ page: 1, pageSize: 10, status: '', keyword: '' })
@@ -73,7 +79,7 @@ async function fetchList() {
     tableData.value = res.items || []
     total.value = res.pagination?.total || 0
   } catch (e) { ElMessage.error('加载出库单失败') }
-  finally { loading.value = false }
+  finally { loading.value = false; refresh() }
 }
 const onSearch = () => { query.page = 1; fetchList() }
 const onReset = () => { query.status = ''; query.keyword = ''; query.page = 1; fetchList() }
@@ -93,8 +99,39 @@ onMounted(fetchList)
 </script>
 
 <style lang="scss" scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.page-title { font-size: 16px; font-weight: 600; color: #303133; }
-.filter-form { margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
-.list-pagination { justify-content: flex-end; margin-top: 12px; }
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.outbound-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form, .filter-bar { flex-shrink: 0; margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination, .pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
 </style>

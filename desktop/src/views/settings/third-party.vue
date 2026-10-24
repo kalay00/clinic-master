@@ -1,6 +1,6 @@
 <template>
-  <div class="page-card">
-    <div class="page-title">第三方配置</div>
+  <div class="settings-third-party-page">
+    <el-card class="page-card" shadow="never">
     <div class="filter-bar">
       <el-select v-model="query.service_type" placeholder="服务类型" clearable style="width: 160px" @change="fetchList">
         <el-option label="短信" value="sms" />
@@ -19,7 +19,8 @@
       <el-button type="primary" plain @click="openDialog()">新增配置</el-button>
     </div>
 
-    <el-table :data="tableData" border stripe v-loading="loading">
+    <div class="table-wrap" ref="wrapRef">
+      <el-table ref="tableRef" :height="tableHeight" :data="tableData" border stripe v-loading="loading">
       <el-table-column type="index" label="#" width="60" align="center" />
       <el-table-column prop="service_type" label="服务类型" width="120" />
       <el-table-column prop="provider" label="服务商" min-width="140" />
@@ -42,6 +43,7 @@
         </template>
       </el-table-column>
     </el-table>
+      </div>
 
     <div class="pagination">
       <el-pagination
@@ -88,12 +90,15 @@
         <el-button type="primary" :loading="submitting" @click="submit">确定</el-button>
       </template>
     </el-dialog>
+  </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useTableHeight } from '@/composables/useTableHeight'
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 import {
   getThirdPartyConfigs,
   createThirdPartyConfig,
@@ -129,9 +134,7 @@ async function fetchList() {
     })
     tableData.value = res.items || []
     total.value = res.total || 0
-  } finally {
-    loading.value = false
-  }
+  } finally { loading.value = false; refresh() }
 }
 
 function onReset() {
@@ -229,19 +232,44 @@ async function handleDelete(row) {
 onMounted(fetchList)
 </script>
 
-<style scoped lang="scss">
-.filter-bar {
+<style lang="scss" scoped>
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.settings-third-party-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 }
-.pagination {
+.page-body {
+  flex: 1;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form, .filter-bar { flex-shrink: 0; margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination, .pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
+
+/* 页面特有样式 */
 .muted {
   color: #bbb;
 }

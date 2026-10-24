@@ -1,6 +1,6 @@
 <template>
-  <div class="page-card">
-    <div class="page-title">员工管理</div>
+  <div class="settings-employee-page">
+    <el-card class="page-card" shadow="never">
     <div class="filter-bar">
       <el-input v-model="query.keyword" placeholder="用户名 / 姓名" clearable style="width: 220px" @keyup.enter="fetchList" @clear="fetchList" />
       <el-select v-model="query.status" placeholder="状态" clearable style="width: 140px" @change="fetchList">
@@ -13,7 +13,8 @@
       <el-button type="primary" plain @click="openDialog()">新增员工</el-button>
     </div>
 
-    <el-table :data="tableData" border stripe v-loading="loading">
+    <div class="table-wrap" ref="wrapRef">
+      <el-table ref="tableRef" :height="tableHeight" :data="tableData" border stripe v-loading="loading">
       <el-table-column type="index" label="#" width="60" align="center" />
       <el-table-column prop="username" label="用户名" width="140" />
       <el-table-column prop="real_name" label="姓名" width="120" />
@@ -42,6 +43,7 @@
         </template>
       </el-table-column>
     </el-table>
+      </div>
 
     <div class="pagination">
       <el-pagination
@@ -95,6 +97,7 @@
         <el-button type="primary" :loading="roleSubmitting" @click="submitRole">确定</el-button>
       </template>
     </el-dialog>
+  </el-card>
   </div>
 </template>
 
@@ -104,6 +107,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUsers, createUser, updateUser, deleteUser, assignUserRole } from '@/api/user'
 import { getRoles } from '@/api/role'
 
+import { useTableHeight } from '@/composables/useTableHeight'
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 async function sha256(str) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -125,9 +130,7 @@ async function fetchList() {
     })
     tableData.value = res.items || []
     total.value = res.total || 0
-  } finally {
-    loading.value = false
-  }
+  } finally { loading.value = false; refresh() }
 }
 
 function onReset() {
@@ -241,19 +244,44 @@ async function submitRole() {
 onMounted(fetchList)
 </script>
 
-<style scoped lang="scss">
-.filter-bar {
+<style lang="scss" scoped>
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.settings-employee-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; display: flex; flex-direction: column; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 }
-.pagination {
+.page-body {
+  flex: 1;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form, .filter-bar { flex-shrink: 0; margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination, .pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
+
+/* 页面特有样式 */
 .role-tag {
   margin-right: 6px;
 }
