@@ -1,16 +1,15 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">收费管理</div>
-    </div>
-
+  <div class="charge-page">
     <el-card class="page-card" shadow="never">
-      <el-radio-group v-model="activeTab" class="status-tabs" fill="#5b7cff" @change="onTabChange">
-        <el-radio-button label="unpaid">待收费</el-radio-button>
-        <el-radio-button label="paid">已收费</el-radio-button>
-        <el-radio-button label="refunded">已退费</el-radio-button>
-      </el-radio-group>
+      <div class="card-header">
+        <el-radio-group v-model="activeTab" class="status-tabs" fill="#5b7cff" @change="onTabChange">
+          <el-radio-button label="unpaid">待收费</el-radio-button>
+          <el-radio-button label="paid">已收费</el-radio-button>
+          <el-radio-button label="refunded">已退费</el-radio-button>
+        </el-radio-group>
+      </div>
 
+      <div class="page-body">
       <el-form :inline="true" class="filter-form">
         <el-form-item label="账单类型">
           <el-select v-model="query.bill_type" placeholder="全部" clearable style="width: 130px" @change="fetchList">
@@ -33,7 +32,8 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe v-loading="loading">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table :data="tableData" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
         <el-table-column type="index" label="序号" width="55" />
         <el-table-column prop="bill_no" label="账单编号" min-width="160" />
         <el-table-column label="账单类型" width="100">
@@ -65,6 +65,8 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
+      </div>
 
       <el-pagination
         class="list-pagination"
@@ -85,10 +87,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, Money, RefreshLeft, View } from '@element-plus/icons-vue'
 import { getBills } from '@/api/payment'
+import { useTableHeight } from '@/composables/useTableHeight'
 
 defineOptions({ name: 'ChargePaid' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const activeTab = ref('unpaid')
 const loading = ref(false)
 const tableData = ref([])
@@ -122,6 +126,7 @@ async function fetchList() {
     ElMessage.error('加载收费列表失败')
   } finally {
     loading.value = false
+    refresh()
   }
 }
 
@@ -138,13 +143,46 @@ onMounted(fetchList)
 </script>
 
 <style lang="scss" scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; }
-.status-tabs { margin-bottom: 16px; }
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.charge-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .status-tabs { margin-bottom: 0; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
 .filter-form {
+  flex-shrink: 0;
   margin-bottom: 12px;
   :deep(.el-form-item) { margin-bottom: 10px; }
 }
 .list-pagination {
+  flex-shrink: 0;
   justify-content: flex-end;
   margin-top: 12px;
 }

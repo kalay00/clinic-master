@@ -1,80 +1,47 @@
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
-import { calculateTableHeight, getTableHeightByContainer } from '@/utils/tableHeight'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
-export function useTableHeight(options = {}) {
+/**
+ * 表格内部滚动（固定高度布局）
+ *
+ * 背景：el-table 的 height="100%" 不会计算内部 body 高度（EP 只对数值 height
+ * 做内部布局），且 flex 子项默认只缩不增，表格高度会卡在初始测量值。
+ * 用法：测量包裹容器（.table-wrap，flex:1）的剩余高度，绑定为数值 height。
+ *
+ * 模板：
+ *   <div class="table-wrap" ref="wrapRef">
+ *     <el-table ref="tableRef" :height="tableHeight" ...>
+ * 脚本：
+ *   const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
+ *   数据加载完成后调用 refresh() 刷新滚动状态
+ */
+export function useTableHeight() {
+  const wrapRef = ref(null)
+  const tableRef = ref(null)
   const tableHeight = ref(400)
-  let resizeObserver = null
-  let containerElement = null
+  let observer = null
 
-  const {
-    extraOffset = 0,
-    excludeSelectors = [],
-    containerSelector = ''
-  } = options
-
-  const route = useRoute()
-
-  const updateHeight = () => {
-    if (containerSelector && containerElement) {
-      tableHeight.value = getTableHeightByContainer(containerSelector, {
-        extraOffset,
-        excludeSelectors
-      })
-    } else {
-      tableHeight.value = calculateTableHeight({
-        extraOffset,
-        excludeSelectors
-      })
-    }
-  }
-
-  const setContainer = (el) => {
-    if (el) {
-      containerElement = el
-      if (resizeObserver) {
-        resizeObserver.observe(el)
-      }
-      updateHeight()
-    }
-  }
-
-  const delayedUpdate = () => {
-    nextTick(() => {
-      setTimeout(updateHeight, 50)
-    })
+  const refresh = async () => {
+    const el = wrapRef.value
+    if (el && el.clientHeight) tableHeight.value = el.clientHeight
+    // 高度/数据变化后主动刷新 EP 内部布局，否则 body-wrapper 滚动状态不更新
+    await nextTick()
+    tableRef.value?.doLayout?.()
   }
 
   onMounted(() => {
-    if (containerSelector) {
-      containerElement = document.querySelector(containerSelector)
-      if (containerElement) {
-        resizeObserver = new ResizeObserver(() => {
-          updateHeight()
-        })
-        resizeObserver.observe(containerElement)
-      }
+    refresh()
+    if (typeof ResizeObserver !== 'undefined' && wrapRef.value) {
+      observer = new ResizeObserver(refresh)
+      observer.observe(wrapRef.value)
     }
-
-    window.addEventListener('resize', updateHeight)
-    delayedUpdate()
   })
 
-  watch(() => route.fullPath, () => {
-    delayedUpdate()
-  })
-
-  onUnmounted(() => {
-    if (resizeObserver) {
-      resizeObserver.disconnect()
-      resizeObserver = null
+  onBeforeUnmount(() => {
+    if (observer) {
+      observer.disconnect()
+      observer = null
     }
-    window.removeEventListener('resize', updateHeight)
   })
 
-  return {
-    tableHeight,
-    updateHeight,
-    setContainer
-  }
+  return { wrapRef, tableRef, tableHeight, refresh }
 }

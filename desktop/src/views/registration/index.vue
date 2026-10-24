@@ -1,20 +1,19 @@
 <template>
   <div class="reg-list-page">
-    <div class="page-head">
-      <div class="page-title">挂号记录</div>
-      <div class="head-actions">
-        <el-button type="primary" :icon="Plus" @click="goCreate">新增挂号</el-button>
-        <el-button :icon="Download" @click="onExport">导出</el-button>
-      </div>
-    </div>
-
     <el-card class="page-card" shadow="never">
-      <el-radio-group v-model="statusTab" class="status-tabs" fill="#5b7cff" @change="onTabChange">
-        <el-radio-button label="pending">未就诊</el-radio-button>
-        <el-radio-button label="completed">已就诊</el-radio-button>
-        <el-radio-button label="cancelled">已退号</el-radio-button>
-      </el-radio-group>
+      <div class="card-header">
+        <el-radio-group v-model="statusTab" class="status-tabs" fill="#5b7cff" @change="onTabChange">
+          <el-radio-button label="pending">未就诊</el-radio-button>
+          <el-radio-button label="completed">已就诊</el-radio-button>
+          <el-radio-button label="cancelled">已退号</el-radio-button>
+        </el-radio-group>
+        <div class="head-actions">
+          <el-button type="primary" :icon="Plus" @click="goCreate">新增挂号</el-button>
+          <el-button :icon="Download" @click="onExport">导出</el-button>
+        </div>
+      </div>
 
+      <div class="page-body">
       <el-form :inline="true" class="filter-form">
         <el-form-item label="挂号科室">
           <el-select v-model="query.department_id" placeholder="全部" clearable filterable style="width: 140px" @change="fetchList">
@@ -38,7 +37,8 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe v-loading="loading">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table :data="tableData" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
         <el-table-column type="index" label="序号" width="55" />
         <el-table-column prop="registration_no" label="挂号单号" min-width="150" />
         <el-table-column prop="patient_name" label="患者姓名" width="100" />
@@ -70,6 +70,8 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
+      </div>
 
       <el-pagination
         class="list-pagination"
@@ -92,10 +94,12 @@ import { Plus, Download, Search, Refresh } from '@element-plus/icons-vue'
 import { getRegistrations, updateRegistration } from '@/api/registration'
 import { getDepartments } from '@/api/department'
 import { getDoctors } from '@/api/doctor'
+import { useTableHeight } from '@/composables/useTableHeight'
 
 defineOptions({ name: 'RegistrationList' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const total = ref(0)
 const departments = ref([])
@@ -139,6 +143,7 @@ async function fetchList() {
     ElMessage.error('加载挂号列表失败')
   } finally {
     loading.value = false
+    refresh()
   }
 }
 
@@ -167,12 +172,40 @@ onMounted(() => { fetchOptions(); fetchList() })
 </script>
 
 <style lang="scss" scoped>
-.reg-list-page { background: #f5f7fa; padding: 12px 16px 16px; }
-.page-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.page-title { font-size: 16px; font-weight: 600; color: #303133; }
-.head-actions { display: flex; gap: 10px; }
-.page-card { border-radius: 8px; }
-.status-tabs { margin-bottom: 16px; }
-.filter-form { margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
-.list-pagination { justify-content: flex-end; margin-top: 12px; }
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.reg-list-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; background: #f5f7fa; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .status-tabs { margin-bottom: 0; }
+  .head-actions { display: flex; gap: 10px; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form { margin-bottom: 12px; flex-shrink: 0; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
 </style>

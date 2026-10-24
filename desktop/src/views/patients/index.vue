@@ -1,14 +1,15 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">患者管理</div>
-      <div class="head-actions">
-        <el-button type="primary" :icon="Plus" @click="goCreate">新增患者</el-button>
-        <el-button :icon="Download" @click="onExport">导出</el-button>
-      </div>
-    </div>
-
+  <div class="patients-page">
     <el-card class="page-card" shadow="never">
+      <div class="card-header">
+        <span class="card-title">患者管理</span>
+        <div class="head-actions">
+          <el-button type="primary" :icon="Plus" @click="goCreate">新增患者</el-button>
+          <el-button :icon="Download" @click="onExport">导出</el-button>
+        </div>
+      </div>
+
+      <div class="page-body">
       <el-form :inline="true" class="filter-form">
         <el-form-item label="关键词">
           <el-input v-model="query.keyword" placeholder="患者姓名/手机号/编号" style="width: 220px" />
@@ -25,7 +26,8 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe v-loading="loading" style="width: 100%">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table :data="tableData" border stripe v-loading="loading" ref="tableRef" :height="tableHeight" style="width: 100%">
         <el-table-column type="index" label="序号" width="55" align="center" />
         <el-table-column prop="patient_no" label="患者编码" min-width="120" />
         <el-table-column prop="name" label="患者姓名" min-width="100" />
@@ -49,6 +51,8 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
+      </div>
 
       <el-pagination
         class="list-pagination"
@@ -103,10 +107,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, Search, FirstAidKit, Edit, User, Delete } from '@element-plus/icons-vue'
 import { getPatients, getMemberLevels, deletePatient } from '@/api/patient'
 import { setMemberLevel, updateMember } from '@/api/member'
+import { useTableHeight } from '@/composables/useTableHeight'
 
 defineOptions({ name: 'PatientList' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const tableData = ref([])
 const total = ref(0)
@@ -146,6 +152,7 @@ async function fetchData() {
     ElMessage.error('加载患者列表失败')
   } finally {
     loading.value = false
+    refresh()
   }
 }
 
@@ -222,9 +229,41 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.page-head { display: flex; justify-content: space-between; align-items: center; }
-.head-actions { display: flex; gap: 10px; }
-.filter-form { margin-bottom: 12px; :deep(.el-form-item) { margin-bottom: 10px; } }
-.list-pagination { justify-content: flex-end; margin-top: 12px; }
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.patients-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .card-title { font-size: 15px; font-weight: 600; color: #303133; }
+  .head-actions { display: flex; gap: 10px; }
+}
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
+.filter-form { margin-bottom: 12px; flex-shrink: 0; :deep(.el-form-item) { margin-bottom: 10px; } }
+.list-pagination { flex-shrink: 0; justify-content: flex-end; margin-top: 12px; }
 :deep(.op-cell .cell) { white-space: nowrap; }
 </style>

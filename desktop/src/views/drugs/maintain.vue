@@ -1,16 +1,17 @@
 <template>
-  <div class="app-container">
-    <div class="page-head">
-      <div class="page-title">药品信息维护</div>
-      <div class="head-actions">
-        <el-button type="primary" :icon="Plus" @click="goCreate">新增药品</el-button>
-        <el-button type="primary" plain :icon="FullScreen" @click="scanCreate">扫码录入</el-button>
-        <el-button :icon="Upload" @click="onImport">导入</el-button>
-        <el-button :icon="Download" @click="onExport">导出</el-button>
-      </div>
-    </div>
-
+  <div class="drugs-page">
     <el-card class="page-card" shadow="never">
+      <div class="card-header">
+        <span class="card-title">药品信息维护</span>
+        <div class="head-actions">
+          <el-button type="primary" :icon="Plus" @click="goCreate">新增药品</el-button>
+          <el-button type="primary" plain :icon="FullScreen" @click="scanCreate">扫码录入</el-button>
+          <el-button :icon="Upload" @click="onImport">导入</el-button>
+          <el-button :icon="Download" @click="onExport">导出</el-button>
+        </div>
+      </div>
+
+      <div class="page-body">
       <el-form :inline="true" class="filter-form">
         <el-form-item label="药品分类">
           <el-select v-model="query.category_id" placeholder="全部" clearable style="width: 130px">
@@ -44,7 +45,8 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe v-loading="loading">
+      <div class="table-wrap" ref="wrapRef">
+        <el-table :data="tableData" border stripe v-loading="loading" ref="tableRef" :height="tableHeight">
         <el-table-column type="index" label="序号" width="55" />
         <el-table-column prop="drug_code" label="编码" min-width="100" />
         <el-table-column prop="name" label="药品名称" min-width="180" />
@@ -73,6 +75,8 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
+      </div>
 
       <el-pagination
         class="list-pagination"
@@ -96,10 +100,12 @@ import {
 } from '@element-plus/icons-vue'
 import { getDrugs, updateDrug, getDrugCategories } from '@/api/pharmacy'
 import { fetchAllPages } from '@/utils/paging'
+import { useTableHeight } from '@/composables/useTableHeight'
 
 defineOptions({ name: 'DrugMaintain' })
 
 const router = useRouter()
+const { wrapRef, tableRef, tableHeight, refresh } = useTableHeight()
 const loading = ref(false)
 const total = ref(0)
 const categories = ref([])
@@ -132,6 +138,7 @@ async function onSearch() {
     ElMessage.error('加载药品列表失败')
   } finally {
     loading.value = false
+    refresh()
   }
 }
 const onImport = () => ElMessage.info('导入功能开发中')
@@ -164,22 +171,52 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.page-head {
+/* 固定高度布局：页面不滚动，筛选/分页固定，仅列表内部滚动 */
+.drugs-page { height: 100%; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page-card {
+  height: 100%;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  overflow: hidden;
+  :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    padding: 16px 20px;
+  }
+}
+.card-header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  .card-title { font-size: 15px; font-weight: 600; color: #303133; }
+  .head-actions {
+    display: flex;
+    gap: 10px;
+  }
 }
-.head-actions {
+.page-body {
+  flex: 1;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
+.table-wrap { flex: 1; min-height: 0; overflow: hidden; }
 .filter-form {
+  flex-shrink: 0;
   margin-bottom: 12px;
   :deep(.el-form-item) {
     margin-bottom: 10px;
   }
 }
 .list-pagination {
+  flex-shrink: 0;
   justify-content: flex-end;
   margin-top: 12px;
 }
