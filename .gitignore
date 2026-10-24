@@ -77,3 +77,5 @@ docker/postgres/
 # Docker bind mount 数据目录
 docker/redis/data/
 docker/rabbitmq/data/
+# 浏览器自动化调试产物
+.playwright-cli/
