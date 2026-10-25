@@ -53,6 +53,7 @@ router.include_router(payment_router, prefix="/payments/bills", tags=["收费账
 router.include_router(payments_router, prefix="/payments/payments", tags=["支付记录"])
 router.include_router(pharmacy_router, prefix="/pharmacy/drugs", tags=["药品"])
 router.include_router(drug_category_router, prefix="/pharmacy/drug-categories", tags=["药品分类"])
+router.include_router(drug_price_router, prefix="/pharmacy/price-adjustments", tags=["药品调价"])
 router.include_router(member_router, prefix="/member/levels", tags=["会员等级"])
 router.include_router(member_manage_router, prefix="/member", tags=["会员管理"])
 router.include_router(commission_router, prefix="/commission/plans", tags=["提成方案"])

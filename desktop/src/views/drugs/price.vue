@@ -2,7 +2,7 @@
   <div class="price-page">
     <el-card class="page-card" shadow="never">
       <div class="card-header">
-        <el-tabs v-model="activeTab" class="top-tabs">
+        <el-tabs v-model="activeTab" class="top-tabs" @tab-change="onTabChange">
           <el-tab-pane label="调价记录" name="records" />
           <el-tab-pane label="药品价格" name="drugs" />
         </el-tabs>
@@ -134,6 +134,10 @@ async function fetchDrugs() {
   finally { drugLoading.value = false; refresh() }
 }
 const onDrugSearch = () => { drugQuery.page = 1; fetchDrugs() }
+// 切换到药品价格 tab 时按需加载（首次或记录更新后）
+const onTabChange = (name) => {
+  if (name === 'drugs' && !drugList.value.length) fetchDrugs()
+}
 const onAdjust = (row) => router.push(`/drugs/price/create?drugId=${row.id}`)
 
 onMounted(fetchList)
